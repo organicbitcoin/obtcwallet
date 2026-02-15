@@ -48,6 +48,28 @@ obtcwallet/ (repo root)
 - 若实际目录不同，以仓库现状为准，可在此文件同步更新。
 - 新增模块尽量按功能归类，避免在顶层堆积零散文件。
 
+## Git 工作指导
+
+- 默认流程：`新分支 -> 开发 -> 本地测试 -> commit -> push -> PR -> merge`。
+- 非紧急情况不要直接推 `master`；优先通过 PR 合入。
+- 分支命名建议：
+  - `feat/...` 功能
+  - `fix/...` 修复
+  - `test/...` 测试增强
+  - `docs/...` 文档更新
+  - `chore/...` 工程与维护
+- commit message 使用英文，建议前缀：`feat:` / `fix:` / `test:` / `docs:` / `chore:`。
+- 小步提交：每个 commit 尽量聚焦单一主题（功能、测试、文档分开）。
+
+### 提交前检查（与 obtcd 对齐）
+
+- 本仓启用 `.githooks/`：
+  - `pre-commit`：检查 `gofmt` + `go test ./...`
+  - `pre-push`：运行 `go test ./...`（若存在 `integration/` 则额外执行）
+- 若本机缺少 `bitcoind` 导致 `chain` 测试失败：
+  - 优先在可用环境补跑完整测试；
+  - 必要时可临时 `--no-verify` 推送，但需在 PR 描述中说明原因与补测计划。
+
 ## 交互约束
 
 - 对话回复一律中文。
