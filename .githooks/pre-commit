@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "[pre-commit] checking gofmt..."
+unformatted="$(gofmt -l $(find . -name '*.go' -not -path './.git/*'))"
+if [[ -n "${unformatted}" ]]; then
+  echo "[pre-commit] gofmt required on:" >&2
+  echo "${unformatted}" >&2
+  echo "Run: gofmt -w <files>" >&2
+  exit 1
+fi
+
+echo "[pre-commit] running go test ./..."
+go test ./...
+
+echo "[pre-commit] OK"
