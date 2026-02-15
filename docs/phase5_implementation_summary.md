@@ -85,7 +85,7 @@
 | `obtc.getexpiry` | ✅ 已完成 | legacyrpc 已接入 |
 | `obtc.renew`（手动） | ✅ 已完成（v1） | 参数校验 + 指定输入续期路径已接入 |
 | 自动续期 | 🟡 基础策略已启动 | 已新增 policy 基础模型与窗口/限额选择函数，尚未接入调度执行链路 |
-| 批量 CLI 工作流 | ⏳ 未开始 | 计划后续阶段实现 |
+| 批量 CLI 工作流 | 🟡 已启动（基础版） | 新增 `cmd/renewall`，支持按 getexpiry 结果批量触发 renew（含 dry-run） |
 | 验证文档（phase5-validation） | ⚠️ 待补 | 需补完整命令与 tx 证据 |
 
 ---
