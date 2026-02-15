@@ -131,6 +131,8 @@ var rpcHandlers = map[string]struct {
 	// here because it hasn't been update to use the reference
 	// implemenation's API.
 	"getunconfirmedbalance":   {handler: getUnconfirmedBalance},
+	"obtc.getexpiry":          {handler: getExpiry, noHelp: true},
+	"obtc.renew":              {handler: getRenew, noHelp: true},
 	"listaddresstransactions": {handler: listAddressTransactions},
 	"listalltransactions":     {handler: listAllTransactions},
 	"renameaccount":           {handler: renameAccount},
