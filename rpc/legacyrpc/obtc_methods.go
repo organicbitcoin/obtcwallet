@@ -260,7 +260,7 @@ func getRenew(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 
 	tx, err := w.SendOutputsWithInput(
 		[]*wire.TxOut{{Value: int64(amt), PkScript: pkScript}},
-		&waddrmgr.KeyScopeBIP0044,
+		nil, // Allow selected outpoints from any key scope in default account.
 		waddrmgr.DefaultAccountNum,
 		minConf,
 		feeRate,
