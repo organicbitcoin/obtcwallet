@@ -174,10 +174,11 @@ type Wallet struct {
 	// errors during initial sync.
 	syncRetryInterval time.Duration
 
-	autoRenewMu          sync.Mutex
-	autoRenewCfg         AutoRenewRuntimeConfig
-	autoRenewConfigured  bool
-	autoRenewLoopRunning bool
+	autoRenewMu             sync.Mutex
+	autoRenewCfg            AutoRenewRuntimeConfig
+	autoRenewConfigured     bool
+	autoRenewLoopRunning    bool
+	autoRenewNextAllowedRun time.Time
 }
 
 // Start starts the goroutines necessary to manage a wallet.

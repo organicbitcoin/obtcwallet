@@ -13,6 +13,7 @@ import (
 
 const (
 	defaultAutoRenewInterval                    = 30 * time.Minute
+	defaultAutoRenewFailureBackoff              = 15 * time.Minute
 	defaultAutoRenewExpiryWindowBlocks          = 3679200
 	defaultAutoRenewExpiringThresholdBlks       = 144 * 180
 	autoRenewDustThresholdSat             int64 = 546
@@ -32,7 +33,9 @@ type AutoRenewPolicy struct {
 type AutoRenewRuntimeConfig struct {
 	Policy                  AutoRenewPolicy
 	Interval                time.Duration
+	FailureBackoff          time.Duration
 	Amount                  btcutil.Amount
+	MaxRenewAmountPerRun    btcutil.Amount // 0 means unlimited.
 	MinConf                 int32
 	Account                 uint32
 	ExpiryWindowBlocks      uint64
@@ -62,7 +65,9 @@ func DefaultAutoRenewRuntimeConfig() AutoRenewRuntimeConfig {
 	return AutoRenewRuntimeConfig{
 		Policy:                  DefaultAutoRenewPolicy(),
 		Interval:                defaultAutoRenewInterval,
+		FailureBackoff:          defaultAutoRenewFailureBackoff,
 		Amount:                  0,
+		MaxRenewAmountPerRun:    0,
 		MinConf:                 0,
 		Account:                 waddrmgr.DefaultAccountNum,
 		ExpiryWindowBlocks:      defaultAutoRenewExpiryWindowBlocks,
@@ -96,6 +101,12 @@ func ValidateAutoRenewRuntimeConfig(c AutoRenewRuntimeConfig) error {
 	if c.Interval <= 0 {
 		return fmt.Errorf("auto-renew interval must be > 0")
 	}
+	if c.FailureBackoff < 0 {
+		return fmt.Errorf("auto-renew failure backoff must be >= 0")
+	}
+	if c.MaxRenewAmountPerRun < 0 {
+		return fmt.Errorf("auto-renew max renew amount per run must be >= 0")
+	}
 	if c.MinConf < 0 {
 		return fmt.Errorf("auto-renew minconf must be >= 0")
 	}
@@ -107,6 +118,11 @@ func ValidateAutoRenewRuntimeConfig(c AutoRenewRuntimeConfig) error {
 	}
 	if c.Policy.Enabled && c.Amount <= 0 {
 		return fmt.Errorf("auto-renew amount must be > 0 when enabled")
+	}
+	if c.Policy.Enabled && c.MaxRenewAmountPerRun > 0 &&
+		c.MaxRenewAmountPerRun < c.Amount {
+
+		return fmt.Errorf("auto-renew max renew amount per run must be >= auto-renew amount")
 	}
 	return nil
 }
@@ -151,6 +167,24 @@ func SelectAutoRenewCandidates(items []ExpiryInfo, p AutoRenewPolicy) []int {
 	return selected
 }
 
+func limitAutoRenewCandidatesByBudget(candidates []autoRenewCandidate,
+	renewAmount, maxRenewAmountPerRun btcutil.Amount) []autoRenewCandidate {
+
+	if maxRenewAmountPerRun <= 0 || renewAmount <= 0 || len(candidates) == 0 {
+		return candidates
+	}
+
+	maxCandidatesByBudget := int(maxRenewAmountPerRun / renewAmount)
+	if maxCandidatesByBudget <= 0 {
+		return nil
+	}
+	if len(candidates) > maxCandidatesByBudget {
+		return candidates[:maxCandidatesByBudget]
+	}
+
+	return candidates
+}
+
 // ConfigureAutoRenew updates wallet process auto-renew parameters.
 //
 // NOTE: This method does not persist configuration to disk.
@@ -163,6 +197,9 @@ func (w *Wallet) ConfigureAutoRenew(cfg AutoRenewRuntimeConfig) error {
 	w.autoRenewMu.Lock()
 	w.autoRenewCfg = cfg
 	w.autoRenewConfigured = true
+	if !cfg.Policy.Enabled {
+		w.autoRenewNextAllowedRun = time.Time{}
+	}
 
 	w.quitMu.Lock()
 	started := w.started
@@ -173,10 +210,11 @@ func (w *Wallet) ConfigureAutoRenew(cfg AutoRenewRuntimeConfig) error {
 	}
 	w.autoRenewMu.Unlock()
 
-	log.Infof("Auto-renew config updated: enabled=%v interval=%s window=[%d,%d] max_utxos=%d max_feerate_sat_per_kb=%d amount_sat=%d minconf=%d",
-		cfg.Policy.Enabled, cfg.Interval, cfg.Policy.WindowStartBlocks,
-		cfg.Policy.WindowEndBlocks, cfg.Policy.MaxUtxosPerRun,
-		cfg.Policy.MaxFeeRateSatPerKB, int64(cfg.Amount), cfg.MinConf,
+	log.Infof("Auto-renew config updated: enabled=%v interval=%s backoff=%s window=[%d,%d] max_utxos=%d max_feerate_sat_per_kb=%d amount_sat=%d max_renew_amount_per_run_sat=%d minconf=%d",
+		cfg.Policy.Enabled, cfg.Interval, cfg.FailureBackoff,
+		cfg.Policy.WindowStartBlocks, cfg.Policy.WindowEndBlocks,
+		cfg.Policy.MaxUtxosPerRun, cfg.Policy.MaxFeeRateSatPerKB,
+		int64(cfg.Amount), int64(cfg.MaxRenewAmountPerRun), cfg.MinConf,
 	)
 
 	return nil
@@ -201,6 +239,31 @@ func (w *Wallet) autoRenewConfigSnapshot() (AutoRenewRuntimeConfig, bool) {
 	}
 
 	return w.autoRenewCfg, true
+}
+
+func (w *Wallet) autoRenewBackoffRemaining(now time.Time) time.Duration {
+	w.autoRenewMu.Lock()
+	defer w.autoRenewMu.Unlock()
+
+	if w.autoRenewNextAllowedRun.IsZero() || !now.Before(w.autoRenewNextAllowedRun) {
+		return 0
+	}
+
+	return w.autoRenewNextAllowedRun.Sub(now)
+}
+
+func (w *Wallet) updateAutoRenewBackoff(cfg AutoRenewRuntimeConfig,
+	now time.Time, failed int) {
+
+	w.autoRenewMu.Lock()
+	defer w.autoRenewMu.Unlock()
+
+	if failed > 0 && cfg.FailureBackoff > 0 {
+		w.autoRenewNextAllowedRun = now.Add(cfg.FailureBackoff)
+		return
+	}
+
+	w.autoRenewNextAllowedRun = time.Time{}
 }
 
 func (w *Wallet) autoRenewLoop() {
@@ -243,22 +306,46 @@ func (w *Wallet) autoRenewLoop() {
 			continue
 		}
 
-		w.runAutoRenewOnce(cfg)
+		now := time.Now()
+		if remaining := w.autoRenewBackoffRemaining(now); remaining > 0 {
+			log.Debugf("Auto-renew backoff active: next run in %s", remaining)
+			continue
+		}
+
+		_, failed := w.runAutoRenewOnce(cfg)
+		w.updateAutoRenewBackoff(cfg, now, failed)
 	}
 }
 
-func (w *Wallet) runAutoRenewOnce(cfg AutoRenewRuntimeConfig) {
+func (w *Wallet) runAutoRenewOnce(cfg AutoRenewRuntimeConfig) (int, int) {
 	candidates, err := w.buildAutoRenewCandidates(cfg)
 	if err != nil {
 		log.Warnf("Auto-renew candidate selection failed: %v", err)
-		return
+		return 0, 1
 	}
 
 	if len(candidates) == 0 {
 		log.Debugf("Auto-renew run: no candidates in window [%d,%d]",
 			cfg.Policy.WindowStartBlocks, cfg.Policy.WindowEndBlocks,
 		)
-		return
+		return 0, 0
+	}
+
+	beforeBudget := len(candidates)
+	candidates = limitAutoRenewCandidatesByBudget(
+		candidates, cfg.Amount, cfg.MaxRenewAmountPerRun,
+	)
+	if cfg.MaxRenewAmountPerRun > 0 && len(candidates) < beforeBudget {
+		log.Infof("Auto-renew budget cap applied: capped candidates from %d to %d (max_renew_amount_per_run_sat=%d amount_sat=%d)",
+			beforeBudget, len(candidates), int64(cfg.MaxRenewAmountPerRun),
+			int64(cfg.Amount),
+		)
+	}
+	if len(candidates) == 0 {
+		log.Warnf("Auto-renew run skipped: budget cap allows zero candidates (max_renew_amount_per_run_sat=%d amount_sat=%d)",
+			int64(cfg.MaxRenewAmountPerRun), int64(cfg.Amount),
+		)
+		return 0, 0
 	}
 
 	succeeded := 0
@@ -284,6 +371,7 @@ func (w *Wallet) runAutoRenewOnce(cfg AutoRenewRuntimeConfig) {
 	log.Infof("Auto-renew run finished: candidates=%d succeeded=%d failed=%d",
 		len(candidates), succeeded, failed,
 	)
+	return succeeded, failed
 }
 
 func (w *Wallet) buildAutoRenewCandidates(cfg AutoRenewRuntimeConfig) ([]autoRenewCandidate, error) {

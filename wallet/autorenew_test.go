@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/wire"
 )
 
 func TestDefaultAutoRenewPolicyDirect(t *testing.T) {
@@ -21,6 +23,9 @@ func TestDefaultAutoRenewRuntimeConfigDirect(t *testing.T) {
 	cfg := DefaultAutoRenewRuntimeConfig()
 	if cfg.Interval <= 0 {
 		t.Fatalf("default interval should be positive")
+	}
+	if cfg.FailureBackoff <= 0 {
+		t.Fatalf("default failure backoff should be positive")
 	}
 	if cfg.Policy.MaxUtxosPerRun <= 0 {
 		t.Fatalf("default max utxos should be positive")
@@ -71,6 +76,18 @@ func TestValidateAutoRenewRuntimeConfigDirect(t *testing.T) {
 	}
 
 	bad = cfg
+	bad.FailureBackoff = -1
+	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
+		t.Fatalf("expected failure backoff validation error")
+	}
+
+	bad = cfg
+	bad.MaxRenewAmountPerRun = -1
+	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
+		t.Fatalf("expected max renew amount per run validation error")
+	}
+
+	bad = cfg
 	bad.MinConf = -1
 	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
 		t.Fatalf("expected minconf validation error")
@@ -80,6 +97,12 @@ func TestValidateAutoRenewRuntimeConfigDirect(t *testing.T) {
 	bad.ExpiryWindowBlocks = 0
 	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
 		t.Fatalf("expected expiry window validation error")
+	}
+
+	bad = cfg
+	bad.MaxRenewAmountPerRun = cfg.Amount - 1
+	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
+		t.Fatalf("expected max renew amount >= amount validation error")
 	}
 }
 
@@ -127,5 +150,28 @@ func TestSelectAutoRenewCandidatesDirect(t *testing.T) {
 	}
 	if idx[0] != 1 || idx[1] != 2 {
 		t.Fatalf("unexpected selected indexes: %v", idx)
+	}
+}
+
+func TestLimitAutoRenewCandidatesByBudgetDirect(t *testing.T) {
+	mkCandidate := func(id byte) autoRenewCandidate {
+		var h chainhash.Hash
+		h[0] = id
+		return autoRenewCandidate{outpoint: wire.OutPoint{Hash: h, Index: 0}}
+	}
+
+	candidates := []autoRenewCandidate{mkCandidate(1), mkCandidate(2), mkCandidate(3)}
+	renewAmount := btcutil.Amount(1000)
+
+	if got := limitAutoRenewCandidatesByBudget(candidates, renewAmount, 0); len(got) != 3 {
+		t.Fatalf("expected unlimited budget to keep all candidates, got=%d", len(got))
+	}
+
+	if got := limitAutoRenewCandidatesByBudget(candidates, renewAmount, 500); len(got) != 0 {
+		t.Fatalf("expected too-small budget to remove all candidates, got=%d", len(got))
+	}
+
+	if got := limitAutoRenewCandidatesByBudget(candidates, renewAmount, 2000); len(got) != 2 {
+		t.Fatalf("expected budget to cap candidates to 2, got=%d", len(got))
 	}
 }
