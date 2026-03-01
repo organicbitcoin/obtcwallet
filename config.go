@@ -70,6 +70,18 @@ type config struct {
 	// Wallet options
 	WalletPass string `long:"walletpass" default-mask:"-" description:"The public wallet password -- Only required if the wallet was created with one"`
 
+	// OBTC auto-renew options
+	AutoRenewEnabled            bool          `long:"autorenew" description:"Enable OBTC auto-renew scheduler"`
+	AutoRenewInterval           time.Duration `long:"autorenewinterval" description:"Interval between auto-renew runs"`
+	AutoRenewAmount             float64       `long:"autorenewamount" description:"Renew amount in BTC per selected UTXO"`
+	AutoRenewMinConf            int32         `long:"autorenewminconf" description:"Minimum confirmations for auto-renew candidate UTXOs"`
+	AutoRenewWindowStart        int32         `long:"autorenewwindowstart" description:"Auto-renew window upper bound of blocks_to_expiry"`
+	AutoRenewWindowEnd          int32         `long:"autorenewwindowend" description:"Auto-renew window lower bound of blocks_to_expiry"`
+	AutoRenewMaxUtxos           int           `long:"autorenewmaxutxos" description:"Maximum number of UTXOs to auto-renew in one run"`
+	AutoRenewMaxFeeRateSatPerKB int64         `long:"autorenewmaxfeerate" description:"Maximum fee rate in sat/KB used by auto-renew"`
+	AutoRenewExpiryWindowBlocks uint64        `long:"autorenewexpirywindow" description:"Expiry window in blocks used by auto-renew candidate calculation"`
+	AutoRenewExpiringThreshold  int32         `long:"autorenewexpiringthreshold" description:"Expiring threshold in blocks used by auto-renew status classification"`
+
 	// RPC client options
 	RPCConnect       string                  `short:"c" long:"rpcconnect" description:"Hostname/IP and port of btcd RPC server to connect to (default localhost:8334, testnet: localhost:18334, testnet4: localhost:48334, simnet: localhost:18556, regtest: localhost:18334)"`
 	CAFile           *cfgutil.ExplicitString `long:"cafile" description:"File containing root certificates to authenticate a TLS connections with btcd"`
@@ -249,6 +261,37 @@ func parseAndSetDebugLevels(debugLevel string) error {
 	return nil
 }
 
+func autoRenewRuntimeConfigFromOptions(cfg *config) (wallet.AutoRenewRuntimeConfig, error) {
+	runtimeCfg := wallet.DefaultAutoRenewRuntimeConfig()
+	runtimeCfg.Policy.Enabled = cfg.AutoRenewEnabled
+	runtimeCfg.Interval = cfg.AutoRenewInterval
+	runtimeCfg.MinConf = cfg.AutoRenewMinConf
+	runtimeCfg.Policy.WindowStartBlocks = cfg.AutoRenewWindowStart
+	runtimeCfg.Policy.WindowEndBlocks = cfg.AutoRenewWindowEnd
+	runtimeCfg.Policy.MaxUtxosPerRun = cfg.AutoRenewMaxUtxos
+	runtimeCfg.Policy.MaxFeeRateSatPerKB = cfg.AutoRenewMaxFeeRateSatPerKB
+	runtimeCfg.ExpiryWindowBlocks = cfg.AutoRenewExpiryWindowBlocks
+	runtimeCfg.ExpiringThresholdBlocks = cfg.AutoRenewExpiringThreshold
+
+	if cfg.AutoRenewAmount < 0 {
+		return wallet.AutoRenewRuntimeConfig{}, fmt.Errorf("autorenewamount must be >= 0")
+	}
+	if cfg.AutoRenewAmount > 0 {
+		amt, err := btcutil.NewAmount(cfg.AutoRenewAmount)
+		if err != nil {
+			return wallet.AutoRenewRuntimeConfig{},
+				fmt.Errorf("invalid autorenewamount: %w", err)
+		}
+		runtimeCfg.Amount = amt
+	}
+
+	if err := wallet.ValidateAutoRenewRuntimeConfig(runtimeCfg); err != nil {
+		return wallet.AutoRenewRuntimeConfig{}, err
+	}
+
+	return runtimeCfg, nil
+}
+
 // loadConfig initializes and parses the config using a config file and command
 // line options.
 //
@@ -262,26 +305,37 @@ func parseAndSetDebugLevels(debugLevel string) error {
 // settings while still allowing the user to override settings with config files
 // and command line options.  Command line options always take precedence.
 func loadConfig() (*config, []string, error) {
+	defaultAutoRenewCfg := wallet.DefaultAutoRenewRuntimeConfig()
+
 	// Default config.
 	cfg := config{
-		DebugLevel:             defaultLogLevel,
-		ConfigFile:             cfgutil.NewExplicitString(defaultConfigFile),
-		AppDataDir:             cfgutil.NewExplicitString(defaultAppDataDir),
-		LogDir:                 defaultLogDir,
-		WalletPass:             wallet.InsecurePubPassphrase,
-		CAFile:                 cfgutil.NewExplicitString(""),
-		RPCKey:                 cfgutil.NewExplicitString(defaultRPCKeyFile),
-		RPCCert:                cfgutil.NewExplicitString(defaultRPCCertFile),
-		LegacyRPCMaxClients:    defaultRPCMaxClients,
-		LegacyRPCMaxWebsockets: defaultRPCMaxWebsockets,
-		DataDir:                cfgutil.NewExplicitString(defaultAppDataDir),
-		UseSPV:                 false,
-		AddPeers:               []string{},
-		ConnectPeers:           []string{},
-		MaxPeers:               neutrino.MaxPeers,
-		BanDuration:            neutrino.BanDuration,
-		BanThreshold:           neutrino.BanThreshold,
-		DBTimeout:              wallet.DefaultDBTimeout,
+		DebugLevel:                  defaultLogLevel,
+		ConfigFile:                  cfgutil.NewExplicitString(defaultConfigFile),
+		AppDataDir:                  cfgutil.NewExplicitString(defaultAppDataDir),
+		LogDir:                      defaultLogDir,
+		WalletPass:                  wallet.InsecurePubPassphrase,
+		CAFile:                      cfgutil.NewExplicitString(""),
+		RPCKey:                      cfgutil.NewExplicitString(defaultRPCKeyFile),
+		RPCCert:                     cfgutil.NewExplicitString(defaultRPCCertFile),
+		LegacyRPCMaxClients:         defaultRPCMaxClients,
+		LegacyRPCMaxWebsockets:      defaultRPCMaxWebsockets,
+		DataDir:                     cfgutil.NewExplicitString(defaultAppDataDir),
+		UseSPV:                      false,
+		AddPeers:                    []string{},
+		ConnectPeers:                []string{},
+		MaxPeers:                    neutrino.MaxPeers,
+		BanDuration:                 neutrino.BanDuration,
+		BanThreshold:                neutrino.BanThreshold,
+		DBTimeout:                   wallet.DefaultDBTimeout,
+		AutoRenewInterval:           defaultAutoRenewCfg.Interval,
+		AutoRenewAmount:             0,
+		AutoRenewMinConf:            defaultAutoRenewCfg.MinConf,
+		AutoRenewWindowStart:        defaultAutoRenewCfg.Policy.WindowStartBlocks,
+		AutoRenewWindowEnd:          defaultAutoRenewCfg.Policy.WindowEndBlocks,
+		AutoRenewMaxUtxos:           defaultAutoRenewCfg.Policy.MaxUtxosPerRun,
+		AutoRenewMaxFeeRateSatPerKB: defaultAutoRenewCfg.Policy.MaxFeeRateSatPerKB,
+		AutoRenewExpiryWindowBlocks: defaultAutoRenewCfg.ExpiryWindowBlocks,
+		AutoRenewExpiringThreshold:  defaultAutoRenewCfg.ExpiringThresholdBlocks,
 	}
 
 	// Pre-parse the command line options to see if an alternative config
@@ -448,6 +502,13 @@ func loadConfig() (*config, []string, error) {
 	// Parse, validate, and set debug log level(s).
 	if err := parseAndSetDebugLevels(cfg.DebugLevel); err != nil {
 		err := fmt.Errorf("%s: %w", "loadConfig", err)
+		fmt.Fprintln(os.Stderr, err)
+		parser.WriteHelp(os.Stderr)
+		return nil, nil, err
+	}
+
+	if _, err := autoRenewRuntimeConfigFromOptions(&cfg); err != nil {
+		err := fmt.Errorf("%s: invalid auto-renew config: %w", funcName, err)
 		fmt.Fprintln(os.Stderr, err)
 		parser.WriteHelp(os.Stderr)
 		return nil, nil, err

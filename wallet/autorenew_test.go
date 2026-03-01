@@ -1,6 +1,11 @@
 package wallet
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/btcsuite/btcd/btcutil"
+)
 
 func TestDefaultAutoRenewPolicyDirect(t *testing.T) {
 	p := DefaultAutoRenewPolicy()
@@ -9,6 +14,19 @@ func TestDefaultAutoRenewPolicyDirect(t *testing.T) {
 	}
 	if p.WindowStartBlocks < p.WindowEndBlocks {
 		t.Fatalf("default window invalid")
+	}
+}
+
+func TestDefaultAutoRenewRuntimeConfigDirect(t *testing.T) {
+	cfg := DefaultAutoRenewRuntimeConfig()
+	if cfg.Interval <= 0 {
+		t.Fatalf("default interval should be positive")
+	}
+	if cfg.Policy.MaxUtxosPerRun <= 0 {
+		t.Fatalf("default max utxos should be positive")
+	}
+	if cfg.Policy.Enabled {
+		t.Fatalf("default runtime config should be disabled")
 	}
 }
 
@@ -29,6 +47,52 @@ func TestValidateAutoRenewPolicyDirect(t *testing.T) {
 	bad.MaxUtxosPerRun = 0
 	if err := ValidateAutoRenewPolicy(bad); err == nil {
 		t.Fatalf("expected invalid max utxos error")
+	}
+}
+
+func TestValidateAutoRenewRuntimeConfigDirect(t *testing.T) {
+	cfg := DefaultAutoRenewRuntimeConfig()
+	cfg.Policy.Enabled = true
+	cfg.Amount = btcutil.Amount(50_000)
+	if err := ValidateAutoRenewRuntimeConfig(cfg); err != nil {
+		t.Fatalf("expected valid runtime config, got %v", err)
+	}
+
+	bad := cfg
+	bad.Amount = 0
+	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
+		t.Fatalf("expected amount validation error when enabled")
+	}
+
+	bad = cfg
+	bad.Interval = 0
+	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
+		t.Fatalf("expected interval validation error")
+	}
+
+	bad = cfg
+	bad.MinConf = -1
+	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
+		t.Fatalf("expected minconf validation error")
+	}
+
+	bad = cfg
+	bad.ExpiryWindowBlocks = 0
+	if err := ValidateAutoRenewRuntimeConfig(bad); err == nil {
+		t.Fatalf("expected expiry window validation error")
+	}
+}
+
+func TestNormalizeAutoRenewRuntimeConfigDirect(t *testing.T) {
+	cfg := AutoRenewRuntimeConfig{
+		Policy: DefaultAutoRenewPolicy(),
+	}
+	cfg = normalizeAutoRenewRuntimeConfig(cfg)
+	if cfg.Interval != 30*time.Minute {
+		t.Fatalf("unexpected default interval after normalization: %v", cfg.Interval)
+	}
+	if cfg.Label == "" {
+		t.Fatalf("label should be defaulted")
 	}
 }
 
