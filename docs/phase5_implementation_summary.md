@@ -74,6 +74,8 @@
 - `rpc/legacyrpc/obtc_methods.go`：`obtc.getexpiry` / `obtc.renew` 逻辑
 - `rpc/legacyrpc/obtc_methods_test.go`：RPC 辅助函数与参数校验直接单测
 - `rpc/legacyrpc/methods.go`：命令路由注册点
+- `cmd/renewall/main.go`：批量续期 CLI（支持 dry-run / 窗口过滤 / 定时多轮执行）
+- `cmd/renewall/main_test.go`：renewall 参数与过滤逻辑单测
 
 ---
 
@@ -84,9 +86,9 @@
 | 钱包到期计算基础 | ✅ 已完成 | 计算、分类、聚合信息已可用 |
 | `obtc.getexpiry` | ✅ 已完成 | legacyrpc 已接入 |
 | `obtc.renew`（手动） | ✅ 已完成（v1） | 参数校验 + 指定输入续期路径已接入 |
-| 自动续期 | 🟡 基础策略已启动 | 已新增 policy 基础模型与窗口/限额选择函数，尚未接入调度执行链路 |
-| 批量 CLI 工作流 | 🟡 已启动（基础版） | 新增 `cmd/renewall`，支持按 getexpiry 结果批量触发 renew（含 dry-run） |
-| 验证文档（phase5-validation） | ⚠️ 待补 | 需补完整命令与 tx 证据 |
+| 自动续期 | 🟡 部分完成 | 已有 policy 基础模型；CLI 侧已具备窗口过滤与定时多轮执行，钱包进程内后台调度仍未接线 |
+| 批量 CLI 工作流 | ✅ 可用（增强版） | `cmd/renewall` 支持 `dry-run`、`window-start/window-end` 过滤、`interval/runs` 定时批处理 |
+| 验证文档（phase5-validation） | ✅ 已补齐 | 已补 `getexpiry/renew` 请求响应、失败案例、真实 txid 与测试命令 |
 
 ---
 
@@ -104,20 +106,19 @@
 
 ---
 
-## 7. 下一步建议（Phase 5A 收尾）
+## 7. 下一步建议（Phase 5B）
 
-1. 新增 `docs/phase5-validation.md`：
-   - `getexpiry` 请求/响应示例；
-   - `renew` 请求/响应示例；
-   - 至少 2 个失败用例及预期错误。
+1. 钱包进程内自动续期调度接线：
+   - 将 `wallet/autorenew.go` policy 与实际执行链路绑定；
+   - 明确启动/停止生命周期与并发保护。
 
-2. 增加 `obtc.renew` 成功路径的更完整集成验证：
-   - 从可用 UTXO 到广播结果；
-   - 校验输入选择与输出目标。
+2. 自动续期执行审计与风控：
+   - 为每轮执行记录候选数、成功/失败数、费用摘要；
+   - 增加最大预算与失败退避策略。
 
-3. 评估并设计 Phase 5B：
-   - 自动续期策略开关；
-   - 批量续期调度与预算限制。
+3. 端到端验证补强：
+   - 覆盖“定时执行 + 重启恢复 + reconnect race”组合场景；
+   - 固化验证脚本并沉淀到文档。
 
 ---
 

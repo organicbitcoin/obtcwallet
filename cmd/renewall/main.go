@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/rpcclient"
@@ -28,13 +29,18 @@ var opts = struct {
 	MaxFeeRate     float64 `long:"maxfeerate" description:"Optional max fee rate in BTC/KB (0 means wallet default)" default:"0"`
 	MinConf        int32   `long:"minconf" description:"Optional minimum confirmations" default:"0"`
 	DryRun         bool    `long:"dry-run" description:"Only print selected outpoints without sending tx"`
+	WindowStart    int32   `long:"window-start" description:"Optional upper bound of blocks_to_expiry (requires --window-end)" default:"-1"`
+	WindowEnd      int32   `long:"window-end" description:"Optional lower bound of blocks_to_expiry (requires --window-start)" default:"-1"`
+	Interval       string  `long:"interval" description:"Optional repeat interval, e.g. 30m (empty means run once)"`
+	Runs           int     `long:"runs" description:"Number of scheduled runs when --interval is set (0 means forever)" default:"1"`
 }{
 	RPCCertificate: filepath.Join(walletDataDirectory, "rpc.cert"),
 }
 
 type getExpiryItem struct {
-	OutPoint string `json:"outpoint"`
-	Status   string `json:"status"`
+	OutPoint       string `json:"outpoint"`
+	Status         string `json:"status"`
+	BlocksToExpiry int32  `json:"blocks_to_expiry"`
 }
 
 type getExpiryResult struct {
@@ -45,6 +51,18 @@ type renewResult struct {
 	TxID string `json:"txid"`
 }
 
+type renewFilter struct {
+	includeExpired bool
+	useWindow      bool
+	windowStart    int32
+	windowEnd      int32
+}
+
+type loopConfig struct {
+	interval time.Duration
+	runs     int
+}
+
 func shouldRenew(status string, includeExpired bool) bool {
 	if status == "expiring" {
 		return true
@@ -52,10 +70,48 @@ func shouldRenew(status string, includeExpired bool) bool {
 	return includeExpired && status == "expired"
 }
 
-func selectOutpoints(items []getExpiryItem, limit int, includeExpired bool) []string {
+func newRenewFilter(includeExpired bool, windowStart, windowEnd int32) (renewFilter, error) {
+	hasStart := windowStart >= 0
+	hasEnd := windowEnd >= 0
+
+	if hasStart != hasEnd {
+		return renewFilter{}, fmt.Errorf("window-start and window-end must be set together")
+	}
+
+	if !hasStart {
+		return renewFilter{includeExpired: includeExpired}, nil
+	}
+
+	if windowStart < windowEnd {
+		return renewFilter{}, fmt.Errorf("window-start must be >= window-end")
+	}
+
+	return renewFilter{
+		includeExpired: includeExpired,
+		useWindow:      true,
+		windowStart:    windowStart,
+		windowEnd:      windowEnd,
+	}, nil
+}
+
+func (f renewFilter) shouldRenewItem(it getExpiryItem) bool {
+	if f.useWindow {
+		if it.BlocksToExpiry > f.windowStart || it.BlocksToExpiry < f.windowEnd {
+			return false
+		}
+		if !f.includeExpired && it.Status == "expired" {
+			return false
+		}
+		return true
+	}
+
+	return shouldRenew(it.Status, f.includeExpired)
+}
+
+func selectOutpoints(items []getExpiryItem, limit int, filter renewFilter) []string {
 	out := make([]string, 0, len(items))
 	for _, it := range items {
-		if !shouldRenew(it.Status, includeExpired) {
+		if !filter.shouldRenewItem(it) {
 			continue
 		}
 		out = append(out, it.OutPoint)
@@ -64,6 +120,29 @@ func selectOutpoints(items []getExpiryItem, limit int, includeExpired bool) []st
 		}
 	}
 	return out
+}
+
+func parseLoopConfig(intervalRaw string, runs int) (loopConfig, error) {
+	if runs < 0 {
+		return loopConfig{}, fmt.Errorf("runs must be >= 0")
+	}
+
+	if intervalRaw == "" {
+		if runs != 1 {
+			return loopConfig{}, fmt.Errorf("runs requires interval")
+		}
+		return loopConfig{}, nil
+	}
+
+	interval, err := time.ParseDuration(intervalRaw)
+	if err != nil {
+		return loopConfig{}, fmt.Errorf("invalid interval: %w", err)
+	}
+	if interval <= 0 {
+		return loopConfig{}, fmt.Errorf("interval must be > 0")
+	}
+
+	return loopConfig{interval: interval, runs: runs}, nil
 }
 
 func mustRaw(v interface{}) json.RawMessage {
@@ -106,6 +185,48 @@ func loadCert(path string) ([]byte, error) {
 	return pem, nil
 }
 
+func runRenewAllOnce(client *rpcclient.Client, filter renewFilter) error {
+	resp, err := client.RawRequest("obtc.getexpiry", []json.RawMessage{mustRaw(opts.FetchLimit)})
+	if err != nil {
+		return fmt.Errorf("obtc.getexpiry failed: %w", err)
+	}
+	var expiry getExpiryResult
+	if err := json.Unmarshal(resp, &expiry); err != nil {
+		return fmt.Errorf("decode getexpiry: %w", err)
+	}
+
+	selected := selectOutpoints(expiry.Items, opts.BatchLimit, filter)
+	if len(selected) == 0 {
+		fmt.Println("no renew candidates selected")
+		return nil
+	}
+
+	if opts.DryRun {
+		fmt.Printf("selected %d outpoints:\n", len(selected))
+		for _, op := range selected {
+			fmt.Println(op)
+		}
+		return nil
+	}
+
+	for i, op := range selected {
+		params := buildRenewParamMessages(op, opts.Amount, opts.TargetAddress, opts.MaxFeeRate, opts.MinConf)
+		raw, err := client.RawRequest("obtc.renew", params)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[%d/%d] renew failed for %s: %v\n", i+1, len(selected), op, err)
+			continue
+		}
+		var result renewResult
+		if err := json.Unmarshal(raw, &result); err != nil {
+			fmt.Fprintf(os.Stderr, "[%d/%d] decode renew result failed for %s: %v\n", i+1, len(selected), op, err)
+			continue
+		}
+		fmt.Printf("[%d/%d] renewed %s txid=%s\n", i+1, len(selected), op, result.TxID)
+	}
+
+	return nil
+}
+
 func main() {
 	if _, err := flags.Parse(&opts); err != nil {
 		os.Exit(1)
@@ -120,6 +241,17 @@ func main() {
 	}
 	if opts.FetchLimit <= 0 {
 		fmt.Fprintln(os.Stderr, "fetchlimit must be > 0")
+		os.Exit(1)
+	}
+
+	filter, err := newRenewFilter(opts.IncludeExpired, opts.WindowStart, opts.WindowEnd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid renew filter: %v\n", err)
+		os.Exit(1)
+	}
+	loopCfg, err := parseLoopConfig(opts.Interval, opts.Runs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid loop config: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -144,43 +276,22 @@ func main() {
 	}
 	defer client.Shutdown()
 
-	resp, err := client.RawRequest("obtc.getexpiry", []json.RawMessage{mustRaw(opts.FetchLimit)})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "obtc.getexpiry failed: %v\n", err)
-		os.Exit(1)
-	}
-	var expiry getExpiryResult
-	if err := json.Unmarshal(resp, &expiry); err != nil {
-		fmt.Fprintf(os.Stderr, "decode getexpiry: %v\n", err)
-		os.Exit(1)
-	}
-
-	selected := selectOutpoints(expiry.Items, opts.BatchLimit, opts.IncludeExpired)
-	if len(selected) == 0 {
-		fmt.Println("no renew candidates selected")
-		return
-	}
-
-	if opts.DryRun {
-		fmt.Printf("selected %d outpoints:\n", len(selected))
-		for _, op := range selected {
-			fmt.Println(op)
+	for run := 1; ; run++ {
+		if err := runRenewAllOnce(client, filter); err != nil {
+			if loopCfg.interval == 0 {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "[run %d] %v\n", run, err)
 		}
-		return
-	}
 
-	for i, op := range selected {
-		params := buildRenewParamMessages(op, opts.Amount, opts.TargetAddress, opts.MaxFeeRate, opts.MinConf)
-		raw, err := client.RawRequest("obtc.renew", params)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[%d/%d] renew failed for %s: %v\n", i+1, len(selected), op, err)
-			continue
+		if loopCfg.interval == 0 {
+			return
 		}
-		var result renewResult
-		if err := json.Unmarshal(raw, &result); err != nil {
-			fmt.Fprintf(os.Stderr, "[%d/%d] decode renew result failed for %s: %v\n", i+1, len(selected), op, err)
-			continue
+		if loopCfg.runs > 0 && run >= loopCfg.runs {
+			return
 		}
-		fmt.Printf("[%d/%d] renewed %s txid=%s\n", i+1, len(selected), op, result.TxID)
+
+		time.Sleep(loopCfg.interval)
 	}
 }

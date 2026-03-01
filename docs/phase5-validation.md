@@ -139,6 +139,32 @@ Result: ✅ expected validation error.
 
 ---
 
+## `cmd/renewall` 补充验证（策略/调度）
+
+增强点：
+- 支持按 `blocks_to_expiry` 做窗口筛选：`--window-start` / `--window-end`
+- 支持定时多轮执行：`--interval` / `--runs`
+
+示例（窗口 + dry-run）：
+
+```bash
+renewall \
+  --rpcuser walletuser --rpcpass walletpass \
+  --amount 0.5 --fetchlimit 1000 --limit 20 \
+  --window-start 52560 --window-end 25920 \
+  --dry-run
+```
+
+示例（每 30 分钟执行一次，共 4 轮）：
+
+```bash
+renewall \
+  --rpcuser walletuser --rpcpass walletpass \
+  --amount 0.5 --interval 30m --runs 4
+```
+
+---
+
 ## Additional Notes
 
 This validation run includes a fix for renew eligibility handling during chain reconnect/sync races:
@@ -150,4 +176,4 @@ Related tests run:
 
 - `go test ./wallet -run 'AutoRenew|Renew|Expiry|CreateTx|CreateSimple' -count=1`
 - `go test ./rpc/legacyrpc -run 'obtc|renew|getexpiry|Renew|Expiry' -count=1`
-- `go test ./cmd/renewall -count=1`
+- `go test ./cmd/renewall -count=1`（含窗口过滤与调度参数解析单测）
