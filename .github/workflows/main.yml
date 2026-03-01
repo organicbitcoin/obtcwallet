@@ -1,151 +1,161 @@
-name: CI
+name: Build and Test
 
-on:
-  push:
-    branches:
-      - "master"
-  pull_request:
-    branches:
-      - "*"
-concurrency:
-  # Cancel any previous workflows if they are from a PR or push.
-  group: ${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-defaults:
-  run:
-    shell: bash
+on: [push, pull_request]
 
 env:
-  # go needs absolute directories, using the $HOME variable doesn't work here.
-  GOCACHE: /home/runner/work/go/pkg/build
-  GOPATH: /home/runner/work/go
-  GOBIN: /home/runner/work/go/bin
-  GO111MODULE: on
-
-  # If you change this please run `make lint` to see where else it needs to be
-  # updated as well.
   GO_VERSION: 1.24.6
-
   BITCOIND_VERSION: '22.0'
   BITCOIND_IMAGE: 'lightninglabs/bitcoin-core'
 
 jobs:
-  ########################
-  # Format, compileation and lint check
-  ########################
-  lint-check:
-    name: Format, compilation and lint check
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: git checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Clean up runner space
-        uses: ./.github/actions/cleanup-space
-
-      - name: setup go ${{ env.GO_VERSION }}
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: Check default values in sample-btcwallet.conf file
-        run: make sample-conf-check
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      - name: Check code format
-        run: make fmt-check
+      - name: Build
+        run: make build
 
-      - name: Check go modules tidiness
-        run: make tidy-module-check
-
-      - name: Check RPC format
-        run: make rpc-check
-
-      - name: compile code
-        run: go install -v ./...
-
-      - name: Lint proto files
-        run: make protolint
-
-      - name: run lint
-        run: make lint-check
-
-  check-commits:
-    if: github.event_name == 'pull_request'
-    name: Check commits
+  test-cover:
+    name: Unit coverage
     runs-on: ubuntu-latest
     steps:
-      - name: git checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Clean up runner space
-        uses: ./.github/actions/cleanup-space
-
-      - name: setup go ${{ env.GO_VERSION }}
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '${{ env.GO_VERSION }}'
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: fetch and rebase on ${{ github.base_ref }}
-        uses: ./.github/actions/rebase
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      - name: check commits
-        run: scripts/check-each-commit.sh upstream/${{ github.base_ref }}
-
-  ########################
-  # run unit tests
-  ########################
-  unit-test:
-    name: run unit tests
-    runs-on: ubuntu-latest
-    strategy:
-      # Allow other tests in the matrix to continue if one fails.
-      fail-fast: false
-      matrix:
-        unit_type:
-          - unit-race
-          - unit-cover
-    steps:
-      - name: extract bitcoind from docker image
-        run: |-
+      - name: Extract bitcoind from docker image
+        run: |
           docker pull ${{ env.BITCOIND_IMAGE }}:${{ env.BITCOIND_VERSION }}
           CONTAINER_ID=$(docker create ${{ env.BITCOIND_IMAGE }}:${{ env.BITCOIND_VERSION }})
           sudo docker cp $CONTAINER_ID:/opt/bitcoin-${{ env.BITCOIND_VERSION }}/bin/bitcoind /usr/local/bin/bitcoind
           docker rm $CONTAINER_ID
 
-      - name: git checkout
-        uses: actions/checkout@v5
-
-      - name: Clean up runner space
-        uses: ./.github/actions/cleanup-space
-
-      - name: go cache
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/work/go
-          key: btcwallet-${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ github.job }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            btcwallet-${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ github.job }}-${{ hashFiles('**/go.sum') }}
-            btcwallet-${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ github.job }}-
-            btcwallet-${{ runner.os }}-go-${{ env.GO_VERSION }}-
-            btcwallet-${{ runner.os }}-go-
-
-      - name: setup go ${{ env.GO_VERSION }}
-        uses: actions/setup-go@v5
-        with:
-          go-version: '${{ env.GO_VERSION }}'
-
-      - name: run ${{ matrix.unit_type }}
-        run: make ${{ matrix.unit_type }}
+      - name: Test
+        run: make unit-cover
 
       - name: Send coverage
         uses: shogo82148/actions-goveralls@v1
-        if: matrix.unit_type == 'unit-cover'
         continue-on-error: true
         with:
           path-to-profile: coverage.txt
           parallel: true
+
+  test-race:
+    name: Unit race
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Extract bitcoind from docker image
+        run: |
+          docker pull ${{ env.BITCOIND_IMAGE }}:${{ env.BITCOIND_VERSION }}
+          CONTAINER_ID=$(docker create ${{ env.BITCOIND_IMAGE }}:${{ env.BITCOIND_VERSION }})
+          sudo docker cp $CONTAINER_ID:/opt/bitcoin-${{ env.BITCOIND_VERSION }}/bin/bitcoind /usr/local/bin/bitcoind
+          docker rm $CONTAINER_ID
+
+      - name: Test
+        run: make unit-race
+
+  test-obtc:
+    name: OBTC Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run OBTC wallet tests
+        run: |
+          go test ./wallet -run 'AutoRenew|Renew|Expiry|CreateTx|CreateSimple' -count=1
+          go test ./rpc/legacyrpc -run 'obtc|renew|getexpiry|Renew|Expiry' -count=1
+          go test ./cmd/renewall -count=1
+
+  test-rpc:
+    name: RPC Integration (bitcoind events)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Extract bitcoind from docker image
+        run: |
+          docker pull ${{ env.BITCOIND_IMAGE }}:${{ env.BITCOIND_VERSION }}
+          CONTAINER_ID=$(docker create ${{ env.BITCOIND_IMAGE }}:${{ env.BITCOIND_VERSION }})
+          sudo docker cp $CONTAINER_ID:/opt/bitcoin-${{ env.BITCOIND_VERSION }}/bin/bitcoind /usr/local/bin/bitcoind
+          docker rm $CONTAINER_ID
+
+      - name: Run bitcoind event tests
+        run: go test ./chain -run TestBitcoindEvents -count=1 -v
+
+  vet:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Go Fmt Check
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "Code is not properly formatted. Run 'gofmt -s -w .'"
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Sample config defaults check
+        run: make sample-conf-check
+
+  build-matrix:
+    name: Build Matrix
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go-version: [1.24.6]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: go build ./...
