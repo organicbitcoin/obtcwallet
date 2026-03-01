@@ -156,6 +156,16 @@ func (w *Wallet) txToOutputs(outputs []*wire.TxOut,
 		return nil, err
 	}
 
+	// In reconnect races, the chain client can briefly report a stale
+	// block stamp while the wallet manager has already advanced via
+	// notifications. Use the higher known height to avoid incorrectly
+	// treating mature coinbase outputs as ineligible.
+	syncedTo := w.Manager.SyncedTo()
+	if bs.Height < syncedTo.Height {
+		bs.Height = syncedTo.Height
+		bs.Hash = syncedTo.Hash
+	}
+
 	// Fall back to default coin selection strategy if none is supplied.
 	if strategy == nil {
 		strategy = CoinSelectionLargest
