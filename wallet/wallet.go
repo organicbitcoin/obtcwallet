@@ -173,6 +173,11 @@ type Wallet struct {
 	// syncRetryInterval is the amount of time to wait between re-tries on
 	// errors during initial sync.
 	syncRetryInterval time.Duration
+
+	autoRenewMu          sync.Mutex
+	autoRenewCfg         AutoRenewRuntimeConfig
+	autoRenewConfigured  bool
+	autoRenewLoopRunning bool
 }
 
 // Start starts the goroutines necessary to manage a wallet.
@@ -196,6 +201,12 @@ func (w *Wallet) Start() {
 	w.wg.Add(2)
 	go w.txCreator()
 	go w.walletLocker()
+
+	w.autoRenewMu.Lock()
+	if w.autoRenewConfigured && w.autoRenewCfg.Policy.Enabled {
+		w.startAutoRenewLoopLocked()
+	}
+	w.autoRenewMu.Unlock()
 }
 
 // SynchronizeRPC associates the wallet with the consensus RPC client,
@@ -4430,6 +4441,7 @@ func OpenWithRetry(db walletdb.DB, pubPass []byte, cbs *waddrmgr.OpenCallbacks,
 		chainParams:         params,
 		quit:                make(chan struct{}),
 		syncRetryInterval:   syncRetryInterval,
+		autoRenewCfg:        DefaultAutoRenewRuntimeConfig(),
 	}
 
 	w.NtfnServer = newNotificationServer(w)

@@ -90,6 +90,23 @@ func walletMain() error {
 	}
 
 	loader.RunAfterLoad(func(w *wallet.Wallet) {
+		autoRenewCfg, err := autoRenewRuntimeConfigFromOptions(cfg)
+		if err != nil {
+			log.Errorf("Failed to build auto-renew config: %v", err)
+			return
+		}
+		if !autoRenewCfg.Policy.Enabled {
+			return
+		}
+
+		err = w.ConfigureAutoRenew(autoRenewCfg)
+		if err != nil {
+			log.Errorf("Failed to enable auto-renew: %v", err)
+			return
+		}
+	})
+
+	loader.RunAfterLoad(func(w *wallet.Wallet) {
 		startWalletRPCServices(w, rpcs, legacyRPCServer)
 	})
 
