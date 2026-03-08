@@ -554,7 +554,124 @@ Human Operator (CLI)      AI Agents / Services
 
 ---
 
-## 8. 推荐的最小请求语义
+### 7.7 核心资源模型
+
+如果这份文档要落成工程实现，接口层必须先定义“资源”而不是只定义“命令”。
+
+建议最少先固定下面这些资源：
+
+| 资源 | 主键 | 用途 |
+| --- | --- | --- |
+| `wallet` | `wallet_id` | 钱包根容器 |
+| `account` | `account_id` | 人类/agent 的逻辑隔离单元 |
+| `capability` | `capability_id` | 细粒度授权令牌 |
+| `policy` | `policy_id` + `version` | 风险、预算、费率、脚本策略 |
+| `reservation` | `reservation_id` | UTXO 预留/租约 |
+| `plan` | `plan_id` | 规划出的可执行方案 |
+| `operation` | `operation_id` | 执行态对象，承载签名/广播/确认流程 |
+| `decision_log` | `decision_id` | 策略引擎决策证据 |
+| `event` | `event_id` | 钱包事件流中的记录 |
+
+其中建议这样区分：
+
+- `plan`：还没有动用私钥，不应视为资金已执行
+- `operation`：进入执行态，开始承载签名、广播、确认和失败信息
+- `reservation`：解决多 agent / 多 CLI 会话的输入冲突
+
+### 7.8 操作状态机
+
+建议所有执行类动作都统一为一个状态机，而不是每个 API 自己发明状态字段。
+
+推荐最小状态集合：
+
+```text
+DRAFT
+  -> RESERVED
+  -> POLICY_REJECTED
+  -> CANCELLED
+
+RESERVED
+  -> SIGNING
+  -> CANCELLED
+  -> EXPIRED
+
+SIGNING
+  -> SIGNED
+  -> FAILED
+  -> CANCELLED
+
+SIGNED
+  -> PUBLISHING
+  -> CANCELLED
+
+PUBLISHING
+  -> PUBLISHED
+  -> FAILED
+
+PUBLISHED
+  -> CONFIRMED
+  -> REORGED
+  -> FAILED
+
+REORGED
+  -> PUBLISHED
+  -> FAILED
+```
+
+工程上有两个好处：
+
+- CLI、AI、后端服务都能读同一套状态
+- 审计和重试逻辑可以统一挂在 `operation` 上
+
+### 7.9 通用响应信封
+
+不建议每个方法各自定义完全不同的顶层响应风格。
+
+推荐统一携带以下元数据：
+
+```json
+{
+  "request_id": "req_001",
+  "operation_id": "op_001",
+  "idempotency_key": "renew-001",
+  "policy_verdict": "allow",
+  "warnings": [],
+  "result": {}
+}
+```
+
+说明：
+
+- `request_id`：链路追踪
+- `operation_id`：后续查询执行状态
+- `idempotency_key`：重试去重
+- `policy_verdict`：让调用方知道是系统允许、拒绝还是仅预演
+- `warnings`：给 CLI 和 AI 共用的提示通道
+
+### 7.10 错误模型
+
+建议 gRPC、HTTP、CLI 三层共用一份逻辑错误码语义。
+
+推荐最小错误码集合：
+
+| 错误码 | 含义 | 典型场景 |
+| --- | --- | --- |
+| `INVALID_ARGUMENT` | 请求参数非法 | outpoint 格式错误、窗口非法 |
+| `FAILED_PRECONDITION` | 当前状态不允许 | 钱包未加载、未同步、未绑定 signer |
+| `UNAUTHORIZED` | capability 不足 | agent 越权 |
+| `POLICY_DENIED` | 策略拒绝 | 费率超限、金额超预算 |
+| `LOCK_REQUIRED` | 需要 signer 解锁或 session | 当前 signer 不可用 |
+| `RESERVATION_CONFLICT` | UTXO 已被其他会话预留 | 多 agent 冲突 |
+| `CHAIN_UNSYNCED` | 链状态不可用 | 未同步到安全高度 |
+| `NETWORK_MISMATCH` | 网络参数不匹配 | OBTC/Testnet/Regtest 错配 |
+| `NOT_FOUND` | 资源不存在 | plan / operation / account 不存在 |
+| `INTERNAL` | 内部错误 | DB、序列化、未知异常 |
+
+建议特别避免把所有失败都压成字符串错误，因为 AI 和 CLI 都需要机器可读的失败分类。
+
+---
+
+## 8. 推荐的最小请求语义与 proto 草案
 
 ### 8.1 `PreviewRenewal`
 
@@ -617,6 +734,158 @@ Human Operator (CLI)      AI Agents / Services
   "idempotency_key": "sign-plan-001"
 }
 ```
+
+### 8.4 `AgentWalletService` proto 草案
+
+截至当前仓库状态，最小可运行版本已经落到：
+
+- `rpc/agentwallet/agentwallet.proto`
+- `rpc/rpcserver/agentwallet_server.go`
+
+当前已实现的方法是：
+
+- `GetWalletState`
+- `ListUtxos`
+- `GetExpiryRisk`
+- `PreviewRenewal`
+- `ReserveUtxos`
+- `ReleaseReservation`
+- `GetOperation`
+
+下面这段仍然保留为“更长线的目标草案”，用于约束后续 capability / signer / event stream / publish path 的演进方向。
+
+```proto
+syntax = "proto3";
+
+package agentwalletrpc;
+
+service AgentWalletService {
+  rpc GetWalletState(GetWalletStateRequest) returns (GetWalletStateResponse);
+  rpc ListUtxos(ListUtxosRequest) returns (ListUtxosResponse);
+  rpc GetExpiryRisk(GetExpiryRiskRequest) returns (GetExpiryRiskResponse);
+  rpc StreamWalletEvents(StreamWalletEventsRequest) returns (stream WalletEvent);
+
+  rpc PreviewRenewal(PreviewRenewalRequest) returns (PreviewRenewalResponse);
+  rpc CreateTransferPlan(CreateTransferPlanRequest) returns (CreateTransferPlanResponse);
+  rpc CreatePsbtPlan(CreatePsbtPlanRequest) returns (CreatePsbtPlanResponse);
+
+  rpc ReserveUtxos(ReserveUtxosRequest) returns (ReserveUtxosResponse);
+  rpc ReleaseReservation(ReleaseReservationRequest) returns (ReleaseReservationResponse);
+
+  rpc SignPlan(SignPlanRequest) returns (SignPlanResponse);
+  rpc SignPsbt(SignPsbtRequest) returns (SignPsbtResponse);
+  rpc PublishTransaction(PublishTransactionRequest) returns (PublishTransactionResponse);
+
+  rpc UpsertRenewalPolicy(UpsertRenewalPolicyRequest) returns (UpsertRenewalPolicyResponse);
+  rpc UpsertSpendPolicy(UpsertSpendPolicyRequest) returns (UpsertSpendPolicyResponse);
+  rpc IssueCapability(IssueCapabilityRequest) returns (IssueCapabilityResponse);
+  rpc RevokeCapability(RevokeCapabilityRequest) returns (RevokeCapabilityResponse);
+
+  rpc GetOperation(GetOperationRequest) returns (GetOperationResponse);
+  rpc ListOperations(ListOperationsRequest) returns (ListOperationsResponse);
+}
+
+message RequestMeta {
+  string request_id = 1;
+  string idempotency_key = 2;
+  string principal = 3;
+  string capability_id = 4;
+}
+
+message OperationMeta {
+  string operation_id = 1;
+  string plan_id = 2;
+  string policy_verdict = 3;
+  repeated string warnings = 4;
+}
+
+message UtxoRef {
+  string txid = 1;
+  uint32 vout = 2;
+}
+
+message ExpiryRisk {
+  UtxoRef outpoint = 1;
+  int64 amount_sat = 2;
+  int32 create_height = 3;
+  int32 expiry_height = 4;
+  int32 blocks_to_expiry = 5;
+  int32 days_to_expiry = 6;
+  string status = 7;
+  bool dust_risk = 8;
+  int64 projected_refund_sat = 9;
+  bool renew_recommended = 10;
+  int32 latest_safe_action_height = 11;
+  string policy_action = 12;
+}
+
+message PreviewRenewalRequest {
+  RequestMeta meta = 1;
+  string wallet_id = 2;
+  string account_id = 3;
+  repeated UtxoRef outpoints = 4;
+  bool dry_run = 5;
+  int64 max_fee_rate_sat_per_kb = 6;
+  string target_script_strategy = 7;
+}
+
+message PreviewRenewalResponse {
+  OperationMeta meta = 1;
+  bytes unsigned_psbt = 2;
+  int64 estimated_fee_sat = 3;
+  int32 projected_new_expiry_height = 4;
+}
+```
+
+这份 proto 草案的设计重点是：
+
+- 先统一 `RequestMeta` / `OperationMeta`
+- 先把 `plan` 和 `operation` 做成一等公民
+- 先把 `ExpiryRisk` 变成结构化模型，而不是零散字段拼装
+
+### 8.5 CLI 与 API 的映射建议
+
+为了让 CLI 和程序接口共用一套能力模型，建议明确“命令只是接口的外衣”。
+
+| CLI 命令 | 建议映射 API | 说明 |
+| --- | --- | --- |
+| `renewall --dry-run ...` | `GetExpiryRisk` + `PreviewRenewal` | 查询并预演，不签名 |
+| `renewall ...` | `GetExpiryRisk` + `PreviewRenewal` + `SignPlan` + `PublishTransaction` | 人类的一键工作流 |
+| `walletpassphrase` | 不直接暴露为长期主接口 | 未来更适合 session/capability |
+| `walletlock` | `CloseSignerSession` 或 `RevokeCapability` 的兼容实现 | 收敛到 signer/session 模型 |
+| `getnewaddress` | `NextAddress` 或未来 `CreateAddressIntent` | 保持兼容 |
+| `obtc.getexpiry` | `GetExpiryRisk` | 逐步迁移 |
+| `obtc.renew` | `PreviewRenewal` + `SignPlan` + `PublishTransaction` | 逐步拆成 plan-first |
+
+这样做的含义不是删除 CLI，而是让 CLI 变成：
+
+- 更稳定
+- 更容易审计
+- 更容易被测试
+- 与 AI 行为完全对齐
+
+### 8.6 为什么不建议继续扩张 Legacy JSON-RPC
+
+Legacy JSON-RPC 仍然有价值，但更适合：
+
+- 兼容旧脚本
+- 兼容现有人工操作流
+- 作为过渡层
+
+不适合继续承载的东西包括：
+
+- capability
+- reservation
+- operation 状态机
+- 事件流
+- signer 抽象
+- 策略版本化
+
+因此建议的原则是：
+
+- `Legacy JSON-RPC`：只保兼容和必要桥接
+- `gRPC`：承载新的语义模型
+- `CLI`：优先调用 gRPC，而不是继续扩张 legacy 方法集合
 
 ---
 
@@ -723,6 +992,62 @@ PSBT-first 的好处：
 ---
 
 ## 11. 对 `obtcwallet` 的落地建议
+
+### 11.0 当前代码复用矩阵
+
+这份设计不是从零开始，下面这些能力可以直接复用或半复用：
+
+| 目标能力 | 当前可复用实现 | 说明 |
+| --- | --- | --- |
+| 钱包创建/加载 | `WalletLoaderService` | 现有 loader 可保留，但生产模式要增加 watch-only / remote signer |
+| 地址生成 | `NextAddress` / `wallet.NewAddress` | 可直接复用 |
+| 到期基础计算 | `wallet.BuildExpiryInfo` | 应改为链参数驱动 |
+| 手动续期执行 | `SendOutputsWithInput` | 可作为 `SubmitRenewal` 底层执行器 |
+| 自动续期策略骨架 | `ConfigureAutoRenew` / `wallet/autorenew.go` | 需要补持久化和事件化 |
+| PSBT 规划 | `FundPsbt` | 可直接复用为计划层底座 |
+| PSBT 最终签名 | `FinalizePsbt` | 可直接复用到 signer path |
+| UTXO reservation / lease | `LeaseOutput` / `ReleaseOutput` / `ListLeasedOutputs` | 已适合做跨进程 TTL reservation 底座 |
+| Agent gRPC phase-1 | `rpc/agentwallet/agentwallet.proto` + `rpc/rpcserver/agentwallet_server.go` | 已有可运行的 agent/CLI 共享程序接口雏形 |
+| 钱包加解锁 | `Unlock` / `Lock` | 可保兼容，但不是未来主授权模型 |
+
+### 11.1 当前代码里需要特别补强的地方
+
+除了前面提到的硬编码 expiry 参数，工程上还有几处需要明确补强：
+
+1. `LockOutpoint` / `UnlockOutpoint` 仍然只是进程内锁；agent 路径应统一基于 `LeaseOutput` / `ReleaseOutput`，当前 phase-1 已按这个方向实现。
+2. `ConfigureAutoRenew` 当前是进程内配置，不是持久化策略对象。
+3. `obtc.getexpiry` / `obtc.renew` 仍然是 legacy RPC 语义；虽然 agent gRPC 已有 `GetExpiryRisk` / `PreviewRenewal` / `GetOperation`，但完整 submit/sign/audit path 还没有闭环。
+4. 当前 signer 还是“钱包解锁后直接签名”，没有显式 session/capability 抽象。
+5. expiry 参数已经被抽象成 agent 侧 provider，但默认仍是 compatibility fallback，不是链感知参数源。
+
+### 11.2 建议的最小实现顺序
+
+当前 phase-1 已经完成：
+
+1. 定义 `rpc/agentwallet/agentwallet.proto`
+2. 落地 `GetWalletState` / `ListUtxos` / `GetExpiryRisk` / `PreviewRenewal`
+3. 用 `LeaseOutput` / `ReleaseOutput` 做持久化 `reservation`
+4. 让 `PreviewRenewal` 直接复用 `FundPsbt`，返回 unsigned PSBT 和交易摘要
+
+下一步更合理的顺序是：
+
+1. 把 expiry provider 接到真正的 OBTC 链参数来源，而不是 compatibility fallback
+2. 把 `operation` / `reservation` 元数据从内存态提升为可恢复、可审计的持久化对象
+3. 增加 `SubmitRenewal` / `SignPsbt` / `PublishTransaction`
+4. 给 CLI 增加一个直接走 agent gRPC 的路径
+5. 最后再考虑把 legacy `obtc.renew` 重定向到新执行链路
+
+### 11.3 CLI 改造策略
+
+CLI 不建议一次性重写。
+
+更稳妥的办法是：
+
+- 第一步：保留现有 CLI 行为
+- 第二步：给 CLI 增加 `--use-agent-api` 或内部默认切到新 gRPC
+- 第三步：等新接口稳定后，把 CLI 的主要逻辑迁出 legacy JSON-RPC
+
+这样可以把迁移风险压到最低。
 
 ### 阶段 1：先补“AI 兼容层”而不是大改共识相关代码
 

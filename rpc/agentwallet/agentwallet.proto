@@ -1,0 +1,201 @@
+syntax = "proto3";
+
+package agentwalletrpc;
+
+option go_package = "github.com/btcsuite/btcwallet/rpc/agentwalletrpc;agentwalletrpc";
+
+// AgentWalletService defines a phase-1 programmatic API for AI agents and
+// human-facing CLI adapters. The initial scope covers wallet state, UTXO
+// inspection, expiry risk analysis, renewal planning, persistent reservations,
+// and operation lookup.
+service AgentWalletService {
+    rpc GetWalletState (GetWalletStateRequest) returns (GetWalletStateResponse);
+    rpc ListUtxos (ListUtxosRequest) returns (ListUtxosResponse);
+    rpc GetExpiryRisk (GetExpiryRiskRequest) returns (GetExpiryRiskResponse);
+    rpc PreviewRenewal (PreviewRenewalRequest) returns (PreviewRenewalResponse);
+    rpc ReserveUtxos (ReserveUtxosRequest) returns (ReserveUtxosResponse);
+    rpc ReleaseReservation (ReleaseReservationRequest) returns (ReleaseReservationResponse);
+    rpc GetOperation (GetOperationRequest) returns (GetOperationResponse);
+}
+
+message RequestMeta {
+    string request_id = 1;
+    string idempotency_key = 2;
+    string principal = 3;
+    string capability_id = 4;
+}
+
+message ResponseMeta {
+    string request_id = 1;
+    repeated string warnings = 2;
+}
+
+message WalletState {
+    string wallet_id = 1;
+    uint32 active_network = 2;
+    bool loaded = 3;
+    bool chain_synced = 4;
+    bool locked = 5;
+    int32 current_block_height = 6;
+    bytes current_block_hash = 7;
+}
+
+message GetWalletStateRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+}
+
+message GetWalletStateResponse {
+    ResponseMeta meta = 1;
+    WalletState state = 2;
+}
+
+message Utxo {
+    string outpoint = 1;
+    int64 amount_sat = 2;
+    bool from_coinbase = 3;
+    int32 block_height = 4;
+    int64 receive_time_unix = 5;
+    string address = 6;
+    bool leased = 7;
+    int64 lease_expires_at_unix = 8;
+}
+
+message ListUtxosRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+    uint32 account_number = 3;
+    int32 min_confirmations = 4;
+}
+
+message ListUtxosResponse {
+    ResponseMeta meta = 1;
+    repeated Utxo utxos = 2;
+}
+
+message ExpiryPolicy {
+    uint64 window_blocks = 1;
+    int32 expiring_threshold_blocks = 2;
+    int64 dust_threshold_sat = 3;
+    uint32 projected_reclaim_ratio_bps = 4;
+    string source = 5;
+}
+
+message ExpiryRisk {
+    string outpoint = 1;
+    int64 amount_sat = 2;
+    int32 create_height = 3;
+    int32 expiry_height = 4;
+    int32 blocks_to_expiry = 5;
+    int32 days_to_expiry = 6;
+    string status = 7;
+    bool dust_risk = 8;
+}
+
+message GetExpiryRiskRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+    uint32 account_number = 3;
+    repeated string outpoints = 4;
+    int32 min_confirmations = 5;
+    uint32 limit = 6;
+    int32 before_height = 7;
+    ExpiryPolicy policy = 8;
+}
+
+message GetExpiryRiskResponse {
+    ResponseMeta meta = 1;
+    int32 tip_height = 2;
+    ExpiryPolicy effective_policy = 3;
+    repeated ExpiryRisk items = 4;
+}
+
+message TransactionSummary {
+    int32 input_count = 1;
+    int32 output_count = 2;
+    int64 total_input_sat = 3;
+    int64 total_output_sat = 4;
+    int64 estimated_fee_sat = 5;
+    int32 change_output_index = 6;
+    int32 target_output_index = 7;
+    string target_address = 8;
+    int64 target_amount_sat = 9;
+    int64 fee_rate_sat_per_kb = 10;
+}
+
+message Operation {
+    string operation_id = 1;
+    string kind = 2;
+    string state = 3;
+    string wallet_id = 4;
+    uint32 account_number = 5;
+    repeated string outpoints = 6;
+    string policy_verdict = 7;
+    repeated string warnings = 8;
+    int64 created_at_unix = 9;
+    int64 updated_at_unix = 10;
+    string reservation_id = 11;
+    TransactionSummary summary = 12;
+    repeated ExpiryRisk expiry_risks = 13;
+}
+
+message PreviewRenewalRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+    uint32 account_number = 3;
+    repeated string outpoints = 4;
+    bool dry_run = 5;
+    int64 max_fee_rate_sat_per_kb = 6;
+    int64 target_amount_sat = 7;
+    string target_address = 8;
+    int32 min_confirmations = 9;
+    string reservation_id = 10;
+    ExpiryPolicy expiry_policy = 11;
+}
+
+message PreviewRenewalResponse {
+    ResponseMeta meta = 1;
+    Operation operation = 2;
+    bytes unsigned_psbt = 3;
+    string unsigned_psbt_b64 = 4;
+    TransactionSummary summary = 5;
+    ExpiryPolicy effective_policy = 6;
+    repeated ExpiryRisk expiry_risks = 7;
+}
+
+message ReserveUtxosRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+    uint32 account_number = 3;
+    repeated string outpoints = 4;
+    int64 ttl_seconds = 5;
+    int32 min_confirmations = 6;
+}
+
+message ReserveUtxosResponse {
+    ResponseMeta meta = 1;
+    string reservation_id = 2;
+    int64 expires_at_unix = 3;
+    repeated string outpoints = 4;
+}
+
+message ReleaseReservationRequest {
+    RequestMeta meta = 1;
+    string reservation_id = 2;
+}
+
+message ReleaseReservationResponse {
+    ResponseMeta meta = 1;
+    string reservation_id = 2;
+    bool released = 3;
+}
+
+message GetOperationRequest {
+    RequestMeta meta = 1;
+    string operation_id = 2;
+}
+
+message GetOperationResponse {
+    ResponseMeta meta = 1;
+    Operation operation = 2;
+}

@@ -246,6 +246,7 @@ func makeListeners(normalizedListenAddrs []string, listen listenFunc) []net.List
 func startWalletRPCServices(wallet *wallet.Wallet, server *grpc.Server, legacyServer *legacyrpc.Server) {
 	if server != nil {
 		rpcserver.StartWalletService(server, wallet)
+		rpcserver.StartAgentWalletService(server, wallet)
 	}
 	if legacyServer != nil {
 		legacyServer.RegisterWallet(wallet)
