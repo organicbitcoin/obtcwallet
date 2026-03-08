@@ -36,6 +36,14 @@ A deep dive into the core design philosophy, architectural patterns, and Go impl
 
 ---
 
+## 🤖 OBTC / AI Wallet
+
+Design notes for evolving `obtcwallet` from a human-operated wallet into a capability-driven, expiry-aware wallet system for AI agents.
+
+**[➡️ Read the AI Wallet Design Draft](./ai_agent_wallet_interface_zh.md)**
+
+---
+
 ## 📝 Architecture Decision Records (ADRs)
 
 Formal documentation of significant architectural decisions, their context, and consequences.
