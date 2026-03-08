@@ -23,6 +23,7 @@ const (
 	AgentWalletService_ListUtxos_FullMethodName          = "/agentwalletrpc.AgentWalletService/ListUtxos"
 	AgentWalletService_GetExpiryRisk_FullMethodName      = "/agentwalletrpc.AgentWalletService/GetExpiryRisk"
 	AgentWalletService_PreviewRenewal_FullMethodName     = "/agentwalletrpc.AgentWalletService/PreviewRenewal"
+	AgentWalletService_SubmitRenewal_FullMethodName      = "/agentwalletrpc.AgentWalletService/SubmitRenewal"
 	AgentWalletService_ReserveUtxos_FullMethodName       = "/agentwalletrpc.AgentWalletService/ReserveUtxos"
 	AgentWalletService_ReleaseReservation_FullMethodName = "/agentwalletrpc.AgentWalletService/ReleaseReservation"
 	AgentWalletService_GetOperation_FullMethodName       = "/agentwalletrpc.AgentWalletService/GetOperation"
@@ -34,13 +35,14 @@ const (
 //
 // AgentWalletService defines a phase-1 programmatic API for AI agents and
 // human-facing CLI adapters. The initial scope covers wallet state, UTXO
-// inspection, expiry risk analysis, renewal planning, persistent reservations,
-// and operation lookup.
+// inspection, expiry risk analysis, renewal planning/submission, persistent
+// reservations, and operation lookup.
 type AgentWalletServiceClient interface {
 	GetWalletState(ctx context.Context, in *GetWalletStateRequest, opts ...grpc.CallOption) (*GetWalletStateResponse, error)
 	ListUtxos(ctx context.Context, in *ListUtxosRequest, opts ...grpc.CallOption) (*ListUtxosResponse, error)
 	GetExpiryRisk(ctx context.Context, in *GetExpiryRiskRequest, opts ...grpc.CallOption) (*GetExpiryRiskResponse, error)
 	PreviewRenewal(ctx context.Context, in *PreviewRenewalRequest, opts ...grpc.CallOption) (*PreviewRenewalResponse, error)
+	SubmitRenewal(ctx context.Context, in *SubmitRenewalRequest, opts ...grpc.CallOption) (*SubmitRenewalResponse, error)
 	ReserveUtxos(ctx context.Context, in *ReserveUtxosRequest, opts ...grpc.CallOption) (*ReserveUtxosResponse, error)
 	ReleaseReservation(ctx context.Context, in *ReleaseReservationRequest, opts ...grpc.CallOption) (*ReleaseReservationResponse, error)
 	GetOperation(ctx context.Context, in *GetOperationRequest, opts ...grpc.CallOption) (*GetOperationResponse, error)
@@ -94,6 +96,16 @@ func (c *agentWalletServiceClient) PreviewRenewal(ctx context.Context, in *Previ
 	return out, nil
 }
 
+func (c *agentWalletServiceClient) SubmitRenewal(ctx context.Context, in *SubmitRenewalRequest, opts ...grpc.CallOption) (*SubmitRenewalResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitRenewalResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_SubmitRenewal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentWalletServiceClient) ReserveUtxos(ctx context.Context, in *ReserveUtxosRequest, opts ...grpc.CallOption) (*ReserveUtxosResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReserveUtxosResponse)
@@ -130,13 +142,14 @@ func (c *agentWalletServiceClient) GetOperation(ctx context.Context, in *GetOper
 //
 // AgentWalletService defines a phase-1 programmatic API for AI agents and
 // human-facing CLI adapters. The initial scope covers wallet state, UTXO
-// inspection, expiry risk analysis, renewal planning, persistent reservations,
-// and operation lookup.
+// inspection, expiry risk analysis, renewal planning/submission, persistent
+// reservations, and operation lookup.
 type AgentWalletServiceServer interface {
 	GetWalletState(context.Context, *GetWalletStateRequest) (*GetWalletStateResponse, error)
 	ListUtxos(context.Context, *ListUtxosRequest) (*ListUtxosResponse, error)
 	GetExpiryRisk(context.Context, *GetExpiryRiskRequest) (*GetExpiryRiskResponse, error)
 	PreviewRenewal(context.Context, *PreviewRenewalRequest) (*PreviewRenewalResponse, error)
+	SubmitRenewal(context.Context, *SubmitRenewalRequest) (*SubmitRenewalResponse, error)
 	ReserveUtxos(context.Context, *ReserveUtxosRequest) (*ReserveUtxosResponse, error)
 	ReleaseReservation(context.Context, *ReleaseReservationRequest) (*ReleaseReservationResponse, error)
 	GetOperation(context.Context, *GetOperationRequest) (*GetOperationResponse, error)
@@ -161,6 +174,9 @@ func (UnimplementedAgentWalletServiceServer) GetExpiryRisk(context.Context, *Get
 }
 func (UnimplementedAgentWalletServiceServer) PreviewRenewal(context.Context, *PreviewRenewalRequest) (*PreviewRenewalResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PreviewRenewal not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) SubmitRenewal(context.Context, *SubmitRenewalRequest) (*SubmitRenewalResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubmitRenewal not implemented")
 }
 func (UnimplementedAgentWalletServiceServer) ReserveUtxos(context.Context, *ReserveUtxosRequest) (*ReserveUtxosResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReserveUtxos not implemented")
@@ -264,6 +280,24 @@ func _AgentWalletService_PreviewRenewal_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentWalletService_SubmitRenewal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitRenewalRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).SubmitRenewal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_SubmitRenewal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).SubmitRenewal(ctx, req.(*SubmitRenewalRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentWalletService_ReserveUtxos_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReserveUtxosRequest)
 	if err := dec(in); err != nil {
@@ -340,6 +374,10 @@ var AgentWalletService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PreviewRenewal",
 			Handler:    _AgentWalletService_PreviewRenewal_Handler,
+		},
+		{
+			MethodName: "SubmitRenewal",
+			Handler:    _AgentWalletService_SubmitRenewal_Handler,
 		},
 		{
 			MethodName: "ReserveUtxos",

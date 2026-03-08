@@ -553,6 +553,7 @@ Human Operator (CLI)      AI Agents / Services
 
 | 方法 | 作用 | 说明 |
 | --- | --- | --- |
+| `SubmitRenewal` | 提交预演过的续期操作 | 当前 phase-1 已落地，基于 `operation_id` 执行并广播 |
 | `SignPlan` | 请求 signer 对计划签名 | capability + policy + session |
 | `SignPsbt` | 对 PSBT 签名 | 适合多系统协作 |
 | `FinalizePlan` | 完成交易装配 | 可选步骤 |
@@ -771,9 +772,16 @@ REORGED
 - `ListUtxos`
 - `GetExpiryRisk`
 - `PreviewRenewal`
+- `SubmitRenewal`
 - `ReserveUtxos`
 - `ReleaseReservation`
 - `GetOperation`
+
+其中当前真正形成闭环的执行路径是：
+
+- `GetExpiryRisk` -> `PreviewRenewal` -> `SubmitRenewal`
+
+也就是说，当前版本已经支持 agent 或 CLI 先拿到 unsigned PSBT 和风险视图，再基于 `operation_id` 执行同一份续期草案并广播。`SubmitRenewal` 暂时是 `preview-first` 语义，不接受脱离预演上下文的自由提交。
 
 下面这段仍然保留为“更长线的目标草案”，用于约束后续 capability / signer / event stream / publish path 的演进方向。
 
@@ -873,12 +881,12 @@ message PreviewRenewalResponse {
 | CLI 命令 | 建议映射 API | 说明 |
 | --- | --- | --- |
 | `renewall --dry-run ...` | `GetExpiryRisk` + `PreviewRenewal` | 查询并预演，不签名 |
-| `renewall ...` | `GetExpiryRisk` + `PreviewRenewal` + `SignPlan` + `PublishTransaction` | 人类的一键工作流 |
+| `renewall ...` | `GetExpiryRisk` + `PreviewRenewal` + `SubmitRenewal` | 当前 phase-1 的可执行闭环 |
 | `walletpassphrase` | 不直接暴露为长期主接口 | 未来更适合 session/capability |
 | `walletlock` | `CloseSignerSession` 或 `RevokeCapability` 的兼容实现 | 收敛到 signer/session 模型 |
 | `getnewaddress` | `NextAddress` 或未来 `CreateAddressIntent` | 保持兼容 |
 | `obtc.getexpiry` | `GetExpiryRisk` | 逐步迁移 |
-| `obtc.renew` | `PreviewRenewal` + `SignPlan` + `PublishTransaction` | 逐步拆成 plan-first |
+| `obtc.renew` | `PreviewRenewal` + `SubmitRenewal` | 当前更适合先迁到 preview-first |
 
 这样做的含义不是删除 CLI，而是让 CLI 变成：
 
@@ -1040,7 +1048,7 @@ PSBT-first 的好处：
 
 1. `LockOutpoint` / `UnlockOutpoint` 仍然只是进程内锁；agent 路径应统一基于 `LeaseOutput` / `ReleaseOutput`，当前 phase-1 已按这个方向实现。
 2. `ConfigureAutoRenew` 当前是进程内配置，不是持久化策略对象。
-3. `obtc.getexpiry` / `obtc.renew` 仍然是 legacy RPC 语义；虽然 agent gRPC 已有 `GetExpiryRisk` / `PreviewRenewal` / `GetOperation`，但完整 submit/sign/audit path 还没有闭环。
+3. `obtc.getexpiry` / `obtc.renew` 仍然是 legacy RPC 语义；虽然 agent gRPC 已有 `GetExpiryRisk` / `PreviewRenewal` / `SubmitRenewal` / `GetOperation`，但显式的 signer session、独立 `SignPsbt`、持久化 audit log 还没有闭环。
 4. 当前 signer 还是“钱包解锁后直接签名”，没有显式 session/capability 抽象。
 5. expiry 参数已经被抽象成共享 resolver，并支持 `OBTC_CHAINCFG_PATH` / `OBTC_EXPIRY_NETWORK`；但这仍然属于“runtime source resolution”，不是直接链接 obtcd module 的最终形态。
 
@@ -1052,12 +1060,13 @@ PSBT-first 的好处：
 2. 落地 `GetWalletState` / `ListUtxos` / `GetExpiryRisk` / `PreviewRenewal`
 3. 用 `LeaseOutput` / `ReleaseOutput` 做持久化 `reservation`
 4. 让 `PreviewRenewal` 直接复用 `FundPsbt`，返回 unsigned PSBT 和交易摘要
+5. 增加 `SubmitRenewal`，基于 `operation_id` 执行并广播已预演的续期交易
 
 下一步更合理的顺序是：
 
 1. 把当前 runtime resolver 升级成直接链接 obtcd module 的真实链参数来源，移除对文件路径和环境变量的依赖
 2. 把 `operation` / `reservation` 元数据从内存态提升为可恢复、可审计的持久化对象
-3. 增加 `SubmitRenewal` / `SignPsbt` / `PublishTransaction`
+3. 在已有 `SubmitRenewal` 基础上继续拆出 `SignPsbt` / `PublishTransaction` 等 signer-aware 执行路径
 4. 给 CLI 增加一个直接走 agent gRPC 的路径
 5. 最后再考虑把 legacy `obtc.renew` 重定向到新执行链路
 

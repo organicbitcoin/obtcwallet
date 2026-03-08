@@ -34,7 +34,9 @@ const (
 	defaultExpiryResultLimit           = 100
 
 	operationKindRenewPreview = "renewal_preview"
+	operationKindRenewSubmit  = "renewal_submit"
 	operationStateDraft       = "DRAFT"
+	operationStatePublished   = "PUBLISHED"
 
 	expiryPolicySourceRequestOverride = "request_override"
 )
@@ -367,6 +369,10 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 		ReservationId: req.ReservationId,
 		Summary:       cloneSummary(summary),
 		ExpiryRisks:   cloneExpiryRisks(expiryRisks),
+		EffectivePolicy: toPBExpiryPolicy(
+			effectivePolicy,
+		),
+		MinConfirmations: req.MinConfirmations,
 	}
 	s.operations[operationID] = op
 	s.mu.Unlock()
@@ -379,6 +385,203 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 		Operation:       cloneOperation(op),
 		UnsignedPsbt:    rawPSBT,
 		UnsignedPsbtB64: b64PSBT,
+		Summary:         cloneSummary(summary),
+		EffectivePolicy: toPBExpiryPolicy(effectivePolicy),
+		ExpiryRisks:     cloneExpiryRisks(expiryRisks),
+	}, nil
+}
+
+func (s *agentWalletServer) SubmitRenewal(_ context.Context,
+	req *pb.SubmitRenewalRequest) (*pb.SubmitRenewalResponse, error) {
+
+	if req.OperationId == "" {
+		return nil, status.Error(codes.InvalidArgument,
+			"operation_id must not be empty")
+	}
+
+	s.mu.Lock()
+	existingOp, ok := s.operations[req.OperationId]
+	if !ok {
+		s.mu.Unlock()
+		return nil, status.Errorf(codes.NotFound,
+			"operation %s not found", req.OperationId)
+	}
+	op := cloneOperation(existingOp)
+	s.mu.Unlock()
+
+	switch op.Kind {
+	case operationKindRenewPreview, operationKindRenewSubmit:
+	default:
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is not a renewal operation", req.OperationId)
+	}
+
+	if op.Summary == nil {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is missing renewal summary", req.OperationId)
+	}
+	if op.State == operationStatePublished {
+		warnings := []string{
+			"operation already published; returning recorded transaction metadata",
+		}
+		return &pb.SubmitRenewalResponse{
+			Meta: &pb.ResponseMeta{
+				RequestId: requestID(req.GetMeta()),
+				Warnings:  warnings,
+			},
+			Operation:       cloneOperation(op),
+			Txid:            op.Txid,
+			Summary:         cloneSummary(op.Summary),
+			EffectivePolicy: cloneExpiryPolicy(op.EffectivePolicy),
+			ExpiryRisks:     cloneExpiryRisks(op.ExpiryRisks),
+		}, nil
+	}
+	if op.State != operationStateDraft {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is in unsupported state %s",
+			req.OperationId, op.State)
+	}
+	if len(op.Outpoints) == 0 {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s has no selected outpoints", req.OperationId)
+	}
+	if op.Summary.TargetAmountSat <= 0 {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s has invalid target amount", req.OperationId)
+	}
+	if s.wallet.Manager.WatchOnly() {
+		return nil, status.Error(codes.FailedPrecondition,
+			"wallet is watch-only; use PreviewRenewal and an external signing flow")
+	}
+
+	selectedOutputs, err := s.lookupOutputs(
+		op.AccountNumber, op.MinConfirmations, op.Outpoints,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	selectedOutpoints := make([]wire.OutPoint, 0, len(selectedOutputs))
+	for _, output := range selectedOutputs {
+		selectedOutpoints = append(selectedOutpoints, output.OutPoint)
+	}
+
+	if err := s.validateRequestedReservation(
+		selectedOutpoints, op.ReservationId,
+	); err != nil {
+		return nil, err
+	}
+
+	targetAddress := op.Summary.TargetAddress
+	if targetAddress == "" {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is missing target address", req.OperationId)
+	}
+
+	targetAddr, err := decodeAddress(targetAddress, s.wallet.ChainParams())
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s has invalid target address: %v",
+			req.OperationId, err)
+	}
+
+	pkScript, err := txscript.PayToAddrScript(targetAddr)
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	effectivePolicy, warnings, err := s.resolveSubmitExpiryPolicy(op)
+	if err != nil {
+		return nil, err
+	}
+
+	tipHeight := s.wallet.SyncedTo().Height
+	expiryRisks, err := buildExpiryRiskItems(
+		selectedOutputs, tipHeight, effectivePolicy, len(selectedOutputs), nil,
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal,
+			"failed to analyze renewal expiry risk: %v", err)
+	}
+	warnings = append(warnings, warningsFromExpiryRisks(expiryRisks)...)
+
+	feeRate := txrules.DefaultRelayFeePerKb
+	if op.Summary.FeeRateSatPerKb > 0 {
+		feeRate = btcutil.Amount(op.Summary.FeeRateSatPerKb)
+	}
+
+	label := req.Label
+	if label == "" {
+		label = "agentwallet.submit_renewal"
+	}
+
+	tx, err := s.wallet.SendOutputsWithInput(
+		[]*wire.TxOut{{
+			Value:    op.Summary.TargetAmountSat,
+			PkScript: pkScript,
+		}},
+		nil, // Allow selected outpoints from any key scope in the account.
+		op.AccountNumber,
+		op.MinConfirmations,
+		feeRate,
+		wallet.CoinSelectionLargest,
+		label,
+		selectedOutpoints,
+	)
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	summary, err := summarizePublishedTransaction(
+		tx, selectedOutputs, pkScript, targetAddress,
+		op.Summary.TargetAmountSat, int64(feeRate),
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal,
+			"failed to summarize published renewal transaction: %v", err)
+	}
+
+	rawTx, err := serializeTransaction(tx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal,
+			"failed to serialize published renewal transaction: %v", err)
+	}
+
+	if op.ReservationId != "" {
+		if releaseErr := releaseLeasedOutpoints(
+			s.wallet, reservationLockID(op.ReservationId), selectedOutpoints,
+		); releaseErr != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"transaction published but reservation release failed: %v",
+				releaseErr,
+			))
+		}
+	}
+
+	now := time.Now().Unix()
+	auditWarnings := mergeWarnings(op.Warnings, warnings)
+	op.Kind = operationKindRenewSubmit
+	op.State = operationStatePublished
+	op.PolicyVerdict = policyVerdictFromExpiryRisks(expiryRisks)
+	op.Warnings = auditWarnings
+	op.UpdatedAtUnix = now
+	op.Summary = cloneSummary(summary)
+	op.ExpiryRisks = cloneExpiryRisks(expiryRisks)
+	op.EffectivePolicy = toPBExpiryPolicy(effectivePolicy)
+	op.Txid = tx.TxHash().String()
+
+	s.mu.Lock()
+	s.operations[req.OperationId] = cloneOperation(op)
+	s.mu.Unlock()
+
+	return &pb.SubmitRenewalResponse{
+		Meta: &pb.ResponseMeta{
+			RequestId: requestID(req.GetMeta()),
+			Warnings:  warnings,
+		},
+		Operation:       cloneOperation(op),
+		Txid:            op.Txid,
+		RawTransaction:  rawTx,
 		Summary:         cloneSummary(summary),
 		EffectivePolicy: toPBExpiryPolicy(effectivePolicy),
 		ExpiryRisks:     cloneExpiryRisks(expiryRisks),
@@ -544,6 +747,25 @@ func (s *agentWalletServer) resolveExpiryPolicy(
 	}
 
 	return policy, warnings, nil
+}
+
+func (s *agentWalletServer) resolveSubmitExpiryPolicy(
+	op *pb.Operation) (agentExpiryPolicy, []string, error) {
+
+	if op != nil && op.EffectivePolicy != nil {
+		policy := agentExpiryPolicy{
+			WindowBlocks:             op.EffectivePolicy.WindowBlocks,
+			ExpiringThresholdBlocks:  op.EffectivePolicy.ExpiringThresholdBlocks,
+			DustThresholdSat:         op.EffectivePolicy.DustThresholdSat,
+			ProjectedReclaimRatioBps: op.EffectivePolicy.ProjectedReclaimRatioBps,
+			Source:                   op.EffectivePolicy.Source,
+		}
+		if err := validateExpiryPolicy(policy); err == nil {
+			return policy, nil, nil
+		}
+	}
+
+	return s.resolveExpiryPolicy(nil)
 }
 
 func (s *agentWalletServer) resolveRenewalTargetAddress(account uint32,
@@ -906,6 +1128,35 @@ func warningsFromExpiryRisks(items []*pb.ExpiryRisk) []string {
 	return warnings
 }
 
+func mergeWarnings(base []string, extra []string) []string {
+	merged := make([]string, 0, len(base)+len(extra))
+	seen := make(map[string]struct{}, len(base)+len(extra))
+
+	for _, warning := range base {
+		if warning == "" {
+			continue
+		}
+		if _, ok := seen[warning]; ok {
+			continue
+		}
+		seen[warning] = struct{}{}
+		merged = append(merged, warning)
+	}
+
+	for _, warning := range extra {
+		if warning == "" {
+			continue
+		}
+		if _, ok := seen[warning]; ok {
+			continue
+		}
+		seen[warning] = struct{}{}
+		merged = append(merged, warning)
+	}
+
+	return merged
+}
+
 func summarizePsbt(packet *psbt.Packet, changeIndex int32, targetPkScript []byte,
 	targetAddress string, targetAmountSat,
 	feeRateSatPerKB int64) (*pb.TransactionSummary, error) {
@@ -952,6 +1203,59 @@ func summarizePsbt(packet *psbt.Packet, changeIndex int32, targetPkScript []byte
 	}, nil
 }
 
+func summarizePublishedTransaction(tx *wire.MsgTx,
+	selectedOutputs []*wallet.TransactionOutput, targetPkScript []byte,
+	targetAddress string, targetAmountSat,
+	feeRateSatPerKB int64) (*pb.TransactionSummary, error) {
+
+	totalInput := int64(0)
+	selectedByOutpoint := make(map[wire.OutPoint]*wallet.TransactionOutput,
+		len(selectedOutputs))
+	for _, output := range selectedOutputs {
+		totalInput += output.Output.Value
+		selectedByOutpoint[output.OutPoint] = output
+	}
+
+	for _, input := range tx.TxIn {
+		if _, ok := selectedByOutpoint[input.PreviousOutPoint]; !ok {
+			return nil, fmt.Errorf("unexpected input %s in published transaction",
+				input.PreviousOutPoint)
+		}
+	}
+
+	totalOutput := int64(0)
+	targetOutputIndex := int32(-1)
+	changeOutputIndex := int32(-1)
+	for idx, output := range tx.TxOut {
+		totalOutput += output.Value
+
+		if output.Value == targetAmountSat &&
+			bytes.Equal(output.PkScript, targetPkScript) &&
+			targetOutputIndex == -1 {
+
+			targetOutputIndex = int32(idx)
+			continue
+		}
+
+		if changeOutputIndex == -1 {
+			changeOutputIndex = int32(idx)
+		}
+	}
+
+	return &pb.TransactionSummary{
+		InputCount:        int32(len(tx.TxIn)),
+		OutputCount:       int32(len(tx.TxOut)),
+		TotalInputSat:     totalInput,
+		TotalOutputSat:    totalOutput,
+		EstimatedFeeSat:   totalInput - totalOutput,
+		ChangeOutputIndex: changeOutputIndex,
+		TargetOutputIndex: targetOutputIndex,
+		TargetAddress:     targetAddress,
+		TargetAmountSat:   targetAmountSat,
+		FeeRateSatPerKb:   feeRateSatPerKB,
+	}, nil
+}
+
 func inputValue(input psbt.PInput, prevOut wire.OutPoint) (int64, error) {
 	switch {
 	case input.WitnessUtxo != nil:
@@ -982,6 +1286,15 @@ func serializePsbt(packet *psbt.Packet) ([]byte, string, error) {
 	return raw.Bytes(), b64, nil
 }
 
+func serializeTransaction(tx *wire.MsgTx) ([]byte, error) {
+	var raw bytes.Buffer
+	if err := tx.Serialize(&raw); err != nil {
+		return nil, err
+	}
+
+	return raw.Bytes(), nil
+}
+
 func cloneOperation(op *pb.Operation) *pb.Operation {
 	if op == nil {
 		return nil
@@ -991,6 +1304,7 @@ func cloneOperation(op *pb.Operation) *pb.Operation {
 	cp.Warnings = append([]string(nil), op.Warnings...)
 	cp.Summary = cloneSummary(op.Summary)
 	cp.ExpiryRisks = cloneExpiryRisks(op.ExpiryRisks)
+	cp.EffectivePolicy = cloneExpiryPolicy(op.EffectivePolicy)
 	return &cp
 }
 
@@ -999,6 +1313,14 @@ func cloneSummary(summary *pb.TransactionSummary) *pb.TransactionSummary {
 		return nil
 	}
 	cp := *summary
+	return &cp
+}
+
+func cloneExpiryPolicy(policy *pb.ExpiryPolicy) *pb.ExpiryPolicy {
+	if policy == nil {
+		return nil
+	}
+	cp := *policy
 	return &cp
 }
 
