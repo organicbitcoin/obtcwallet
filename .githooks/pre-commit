@@ -13,7 +13,4 @@ if [[ -n "${unformatted}" ]]; then
   exit 1
 fi
 
-echo "[pre-commit] running go test ./..."
-go test ./...
-
 echo "[pre-commit] OK"

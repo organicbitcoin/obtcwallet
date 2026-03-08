@@ -17,10 +17,7 @@ import (
 )
 
 const (
-	defaultExpiryWindowBlocks    uint64 = 3679200
-	defaultExpiringThresholdBlks int32  = 144 * 180
-	defaultExpiryResultLimit            = 100
-	dustThresholdSat             int64  = 546
+	defaultExpiryResultLimit = 100
 )
 
 type GetExpiryCmd struct {
@@ -69,7 +66,8 @@ func init() {
 }
 
 func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, windowBlocks uint64,
-	expiringThreshold int32, limit int, beforeHeight *int32) ([]GetExpiryResultItem, error) {
+	expiringThreshold int32, dustThresholdSat int64, limit int,
+	beforeHeight *int32) ([]GetExpiryResultItem, error) {
 	items := make([]GetExpiryResultItem, 0, len(outputs))
 	for _, out := range outputs {
 		createHeight := out.ContainingBlock.Height
@@ -125,11 +123,13 @@ func getExpiry(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		limit = *cmd.Limit
 	}
 
-	windowBlocks := defaultExpiryWindowBlocks
+	resolvedPolicy, _ := wallet.ResolveExpiryPolicy(w.ChainParams())
+
+	windowBlocks := resolvedPolicy.WindowBlocks
 	if cmd.WindowBlocks != nil {
 		windowBlocks = *cmd.WindowBlocks
 	}
-	expiringThreshold := defaultExpiringThresholdBlks
+	expiringThreshold := resolvedPolicy.ExpiringThresholdBlocks
 	if cmd.ExpiringThreshold != nil {
 		expiringThreshold = *cmd.ExpiringThreshold
 	}
@@ -143,7 +143,10 @@ func getExpiry(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	}
 
 	tip := w.Manager.SyncedTo().Height
-	items, err := makeGetExpiryResult(outputs, tip, windowBlocks, expiringThreshold, limit, cmd.BeforeHeight)
+	items, err := makeGetExpiryResult(
+		outputs, tip, windowBlocks, expiringThreshold,
+		resolvedPolicy.DustThresholdSat, limit, cmd.BeforeHeight,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -127,16 +127,39 @@ OBTC 和传统 BTC 钱包有一个根本区别：资产不是“放着就行”�
 
 ### 3.3 还缺少链参数动态发现
 
-当前 `obtc.getexpiry` 和 `autorenew` 里仍然存在硬编码 expiry 参数：
+当前这个缺口已经开始收敛，但还没有完全闭环。
+
+现在钱包侧已经新增了一个共享 expiry policy resolver，会按下面的优先级取值：
+
+1. 真实 `obtcd/chaincfg/params_obtc.go`
+2. 内置的 OBTC 网络 fallback
+3. compatibility default
+
+当前 resolver 支持两个运行时入口：
+
+- `OBTC_CHAINCFG_PATH`
+  - 可指向 `params_obtc.go` 文件本身
+  - 或 `chaincfg/` 目录
+  - 或 `obtcd` repo 根目录
+- `OBTC_EXPIRY_NETWORK`
+  - 当钱包当前链参数还不能直接表达 `obtcmainnet/obtctestnet/obtcregtest` 时，可显式指定逻辑网络名
+
+共享 resolver 现在已经接到了：
 
 - `rpc/legacyrpc/obtc_methods.go`
 - `wallet/autorenew.go`
+- `rpc/rpcserver/agentwallet_server.go`
 
-而 `obtcd` 侧的 expiry 参数由链配置决定：
+而 `obtcd` 侧的 source-of-truth 仍然是：
 
 - `obtcd/chaincfg/params_obtc.go`
 
-对 AI 钱包来说，这一点必须修正。agent 不能依赖钱包本地硬编码去判断 expiry，否则一旦网络参数变化、测试网切换、链侧实现修订，就会直接产生错误决策。
+所以当前状态是：
+
+- 已经不再只依赖单点硬编码
+- 但仍然没有做到“直接链接 obtcd module 后自动获得 OBTC chaincfg API”
+
+对 AI 钱包来说，最终目标仍然应该是后者，因为 agent 不能长期依赖本地 fallback 去判断 expiry。
 
 ### 3.4 还缺少机器友好的操作语义
 
@@ -1004,6 +1027,7 @@ PSBT-first 的好处：
 | 到期基础计算 | `wallet.BuildExpiryInfo` | 应改为链参数驱动 |
 | 手动续期执行 | `SendOutputsWithInput` | 可作为 `SubmitRenewal` 底层执行器 |
 | 自动续期策略骨架 | `ConfigureAutoRenew` / `wallet/autorenew.go` | 需要补持久化和事件化 |
+| expiry policy 解析 | `wallet/ResolveExpiryPolicy` | 已支持 source file / network override / fallback |
 | PSBT 规划 | `FundPsbt` | 可直接复用为计划层底座 |
 | PSBT 最终签名 | `FinalizePsbt` | 可直接复用到 signer path |
 | UTXO reservation / lease | `LeaseOutput` / `ReleaseOutput` / `ListLeasedOutputs` | 已适合做跨进程 TTL reservation 底座 |
@@ -1018,7 +1042,7 @@ PSBT-first 的好处：
 2. `ConfigureAutoRenew` 当前是进程内配置，不是持久化策略对象。
 3. `obtc.getexpiry` / `obtc.renew` 仍然是 legacy RPC 语义；虽然 agent gRPC 已有 `GetExpiryRisk` / `PreviewRenewal` / `GetOperation`，但完整 submit/sign/audit path 还没有闭环。
 4. 当前 signer 还是“钱包解锁后直接签名”，没有显式 session/capability 抽象。
-5. expiry 参数已经被抽象成 agent 侧 provider，但默认仍是 compatibility fallback，不是链感知参数源。
+5. expiry 参数已经被抽象成共享 resolver，并支持 `OBTC_CHAINCFG_PATH` / `OBTC_EXPIRY_NETWORK`；但这仍然属于“runtime source resolution”，不是直接链接 obtcd module 的最终形态。
 
 ### 11.2 建议的最小实现顺序
 
@@ -1031,7 +1055,7 @@ PSBT-first 的好处：
 
 下一步更合理的顺序是：
 
-1. 把 expiry provider 接到真正的 OBTC 链参数来源，而不是 compatibility fallback
+1. 把当前 runtime resolver 升级成直接链接 obtcd module 的真实链参数来源，移除对文件路径和环境变量的依赖
 2. 把 `operation` / `reservation` 元数据从内存态提升为可恢复、可审计的持久化对象
 3. 增加 `SubmitRenewal` / `SignPsbt` / `PublishTransaction`
 4. 给 CLI 增加一个直接走 agent gRPC 的路径
