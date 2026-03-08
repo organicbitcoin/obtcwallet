@@ -18,6 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	bitcoindEventTimeout = 5 * time.Second
+	bitcoindStartupDelay = 2 * time.Second
+	bitcoindSyncTimeout  = 15 * time.Second
+)
+
 // TestBitcoindEvents ensures that the BitcoindClient correctly delivers tx and
 // block notifications for both the case where a ZMQ subscription is used and
 // for the case where RPC polling is used.
@@ -41,11 +47,10 @@ func TestBitcoindEvents(t *testing.T) {
 
 		// Set up 2 btcd miners.
 		miner1, miner2 := setupMiners(t)
-		addr := miner1.P2PAddress()
 
 		t.Run(test.name, func(t *testing.T) {
 			// Set up a bitcoind node and connect it to miner 1.
-			btcClient := setupBitcoind(t, addr, test.rpcPolling)
+			btcClient := setupBitcoind(t, miner1, test.rpcPolling)
 
 			// Test that the correct block `Connect` and
 			// `Disconnect` notifications are received during a
@@ -54,17 +59,17 @@ func TestBitcoindEvents(t *testing.T) {
 
 			// Test that the expected block notifications are
 			// received.
-			btcClient = setupBitcoind(t, addr, test.rpcPolling)
+			btcClient = setupBitcoind(t, miner1, test.rpcPolling)
 			testNotifyBlocks(t, miner1, btcClient)
 
 			// Test that the expected tx notifications are
 			// received.
-			btcClient = setupBitcoind(t, addr, test.rpcPolling)
+			btcClient = setupBitcoind(t, miner1, test.rpcPolling)
 			testNotifyTx(t, miner1, btcClient)
 
 			// Test notifications for inputs already found in
 			// mempool.
-			btcClient = setupBitcoind(t, addr, test.rpcPolling)
+			btcClient = setupBitcoind(t, miner1, test.rpcPolling)
 			testNotifySpentMempool(t, miner1, btcClient)
 
 			// Test looking up mempool for input spent.
@@ -102,7 +107,7 @@ func testNotifyTx(t *testing.T, miner *rpctest.Harness, client *BitcoindClient) 
 		_, ok := ntfn.(ClientConnected)
 		require.Truef(ok, "Expected type ClientConnected, got %T", ntfn)
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out for ClientConnected notification")
 	}
 
@@ -113,7 +118,7 @@ func testNotifyTx(t *testing.T, miner *rpctest.Harness, client *BitcoindClient) 
 		require.Truef(ok, "Expected type RelevantTx, got %T", ntfn)
 		require.True(tx.TxRecord.Hash.IsEqual(&hash))
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out waiting for RelevantTx notification")
 	}
 }
@@ -139,7 +144,7 @@ func testNotifyBlocks(t *testing.T, miner *rpctest.Harness,
 		_, ok := ntfn.(ClientConnected)
 		require.Truef(ok, "Expected type ClientConnected, got %T", ntfn)
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out for ClientConnected notification")
 	}
 
@@ -150,7 +155,7 @@ func testNotifyBlocks(t *testing.T, miner *rpctest.Harness,
 		require.Truef(ok, "Expected type FilteredBlockConnected, "+
 			"got %T", ntfn)
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out for FilteredBlockConnected " +
 			"notification")
 	}
@@ -161,7 +166,7 @@ func testNotifyBlocks(t *testing.T, miner *rpctest.Harness,
 		_, ok := ntfn.(BlockConnected)
 		require.Truef(ok, "Expected type BlockConnected, got %T", ntfn)
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out for BlockConnected notification")
 	}
 }
@@ -200,7 +205,7 @@ func testNotifySpentMempool(t *testing.T, miner *rpctest.Harness,
 		_, ok := ntfn.(ClientConnected)
 		require.Truef(ok, "Expected type ClientConnected, got %T", ntfn)
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out for ClientConnected notification")
 	}
 
@@ -211,7 +216,7 @@ func testNotifySpentMempool(t *testing.T, miner *rpctest.Harness,
 		require.Truef(ok, "Expected type RelevantTx, got %T", ntfn)
 		require.True(tx.TxRecord.Hash.IsEqual(&txid))
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out waiting for RelevantTx notification")
 	}
 }
@@ -281,7 +286,7 @@ func testReorg(t *testing.T, miner1, miner2 *rpctest.Harness,
 		_, ok := ntfn.(ClientConnected)
 		require.Truef(ok, "Expected type ClientConnected, got %T", ntfn)
 
-	case <-time.After(time.Second):
+	case <-time.After(bitcoindEventTimeout):
 		require.Fail("timed out for ClientConnected notification")
 	}
 
@@ -370,7 +375,7 @@ func testReorg(t *testing.T, miner1, miner2 *rpctest.Harness,
 func waitForBlockNtfn(t *testing.T, ntfns <-chan interface{},
 	expectedHeight int32, connected bool) chainhash.Hash {
 
-	timer := time.NewTimer(2 * time.Second)
+	timer := time.NewTimer(bitcoindEventTimeout)
 	for {
 		select {
 		case nftn := <-ntfns:
@@ -454,7 +459,7 @@ func setupMiners(t *testing.T) (*rpctest.Harness, *rpctest.Harness) {
 
 // setupBitcoind starts up a bitcoind node with either a zmq connection or
 // rpc polling connection and returns a client wrapper of this connection.
-func setupBitcoind(t *testing.T, minerAddr string,
+func setupBitcoind(t *testing.T, miner *rpctest.Harness,
 	rpcPolling bool) *BitcoindClient {
 
 	// Start a bitcoind instance and connect it to miner1.
@@ -467,7 +472,7 @@ func setupBitcoind(t *testing.T, minerAddr string,
 		"bitcoind",
 		"-datadir="+tempBitcoindDir,
 		"-regtest",
-		"-connect="+minerAddr,
+		"-connect="+miner.P2PAddress(),
 		"-txindex",
 		"-rpcauth=weks:469e9bb14ab2360f8e226efed5ca6f"+
 			"d$507c670e800a95284294edb5773b05544b"+
@@ -485,7 +490,7 @@ func setupBitcoind(t *testing.T, minerAddr string,
 	})
 
 	// Wait for the bitcoind instance to start up.
-	time.Sleep(time.Second)
+	time.Sleep(bitcoindStartupDelay)
 
 	host := fmt.Sprintf("127.0.0.1:%d", rpcPort)
 	cfg := &BitcoindConfig{
@@ -528,6 +533,20 @@ func setupBitcoind(t *testing.T, minerAddr string,
 	t.Cleanup(func() {
 		btcClient.Stop()
 	})
+
+	require.Eventually(t, func() bool {
+		minerHash, minerHeight, err := miner.Client.GetBestBlock()
+		if err != nil {
+			return false
+		}
+
+		clientHash, clientHeight, err := btcClient.GetBestBlock()
+		if err != nil {
+			return false
+		}
+
+		return clientHeight == minerHeight && clientHash.IsEqual(minerHash)
+	}, bitcoindSyncTimeout, 100*time.Millisecond)
 
 	return btcClient
 }
