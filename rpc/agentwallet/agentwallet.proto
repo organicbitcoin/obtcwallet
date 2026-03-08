@@ -6,13 +6,14 @@ option go_package = "github.com/btcsuite/btcwallet/rpc/agentwalletrpc;agentwalle
 
 // AgentWalletService defines a phase-1 programmatic API for AI agents and
 // human-facing CLI adapters. The initial scope covers wallet state, UTXO
-// inspection, expiry risk analysis, renewal planning, persistent reservations,
-// and operation lookup.
+// inspection, expiry risk analysis, renewal planning/submission, persistent
+// reservations, and operation lookup.
 service AgentWalletService {
     rpc GetWalletState (GetWalletStateRequest) returns (GetWalletStateResponse);
     rpc ListUtxos (ListUtxosRequest) returns (ListUtxosResponse);
     rpc GetExpiryRisk (GetExpiryRiskRequest) returns (GetExpiryRiskResponse);
     rpc PreviewRenewal (PreviewRenewalRequest) returns (PreviewRenewalResponse);
+    rpc SubmitRenewal (SubmitRenewalRequest) returns (SubmitRenewalResponse);
     rpc ReserveUtxos (ReserveUtxosRequest) returns (ReserveUtxosResponse);
     rpc ReleaseReservation (ReleaseReservationRequest) returns (ReleaseReservationResponse);
     rpc GetOperation (GetOperationRequest) returns (GetOperationResponse);
@@ -137,6 +138,9 @@ message Operation {
     string reservation_id = 11;
     TransactionSummary summary = 12;
     repeated ExpiryRisk expiry_risks = 13;
+    ExpiryPolicy effective_policy = 14;
+    int32 min_confirmations = 15;
+    string txid = 16;
 }
 
 message PreviewRenewalRequest {
@@ -158,6 +162,22 @@ message PreviewRenewalResponse {
     Operation operation = 2;
     bytes unsigned_psbt = 3;
     string unsigned_psbt_b64 = 4;
+    TransactionSummary summary = 5;
+    ExpiryPolicy effective_policy = 6;
+    repeated ExpiryRisk expiry_risks = 7;
+}
+
+message SubmitRenewalRequest {
+    RequestMeta meta = 1;
+    string operation_id = 2;
+    string label = 3;
+}
+
+message SubmitRenewalResponse {
+    ResponseMeta meta = 1;
+    Operation operation = 2;
+    string txid = 3;
+    bytes raw_transaction = 4;
     TransactionSummary summary = 5;
     ExpiryPolicy effective_policy = 6;
     repeated ExpiryRisk expiry_risks = 7;
