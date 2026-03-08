@@ -460,10 +460,9 @@ func setupBitcoind(t *testing.T, minerAddr string,
 	// Start a bitcoind instance and connect it to miner1.
 	tempBitcoindDir := t.TempDir()
 
-	zmqBlockHost := "ipc:///" + tempBitcoindDir + "/blocks.socket"
-	zmqTxHost := "ipc:///" + tempBitcoindDir + "/tx.socket"
-
-	rpcPort := rand.Int()%(65536-1024) + 1024
+	zmqBlockHost := fmt.Sprintf("tcp://127.0.0.1:%d", randPort())
+	zmqTxHost := fmt.Sprintf("tcp://127.0.0.1:%d", randPort())
+	rpcPort := randPort()
 	bitcoind := exec.Command(
 		"bitcoind",
 		"-datadir="+tempBitcoindDir,
@@ -531,6 +530,10 @@ func setupBitcoind(t *testing.T, minerAddr string,
 	})
 
 	return btcClient
+}
+
+func randPort() int {
+	return rand.Int()%(65536-1024) + 1024
 }
 
 // randPubKeyHashScript generates a P2PKH script that pays to the public key of

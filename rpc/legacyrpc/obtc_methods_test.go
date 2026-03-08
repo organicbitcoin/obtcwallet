@@ -30,7 +30,10 @@ func TestMakeGetExpiryResultDirect(t *testing.T) {
 		},
 	}
 	before := int32(200)
-	items, err := makeGetExpiryResult(outputs, 30, 100, 50, 10, &before)
+	items, err := makeGetExpiryResult(
+		outputs, 30, 100, 50, wallet.CompatibilityDustThresholdSat,
+		10, &before,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +52,10 @@ func TestMakeGetExpiryResultLimitAndFilter(t *testing.T) {
 		{OutPoint: testOutPoint(3), Output: wire.TxOut{Value: 1000}, ContainingBlock: wallet.BlockIdentity{Height: 30}},
 	}
 	before := int32(125) // with window 100, keep heights 10 and 20 only
-	items, err := makeGetExpiryResult(outputs, 0, 100, 10, 1, &before)
+	items, err := makeGetExpiryResult(
+		outputs, 0, 100, 10, wallet.CompatibilityDustThresholdSat,
+		1, &before,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

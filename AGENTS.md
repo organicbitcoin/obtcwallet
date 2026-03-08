@@ -64,11 +64,15 @@ obtcwallet/ (repo root)
 ### 提交前检查（与 obtcd 对齐）
 
 - 本仓启用 `.githooks/`：
-  - `pre-commit`：检查 `gofmt` + `go test ./...`
-  - `pre-push`：运行 `go test ./...`（若存在 `integration/` 则额外执行）
+  - `pre-commit`：检查 `gofmt`
+  - `pre-push`：运行 `go test ./... -count=1`
+- 初次 clone 或 hooks 未生效时，执行：
+  - `./scripts/setup-git-hooks.sh`
+- 当前仓库已停用 GitHub Actions，以本地 `pre-push` 作为主要测试闸门，避免重复 CI 成本。
 - 若本机缺少 `bitcoind` 导致 `chain` 测试失败：
-  - 优先在可用环境补跑完整测试；
-  - 必要时可临时 `--no-verify` 推送，但需在 PR 描述中说明原因与补测计划。
+  - 优先修复本地测试环境，或在具备完整依赖的环境中执行；
+  - agent 严格禁止在 `commit` / `push` / `merge` 时使用 `--no-verify`；
+  - 若 hooks 失败且无法在当前环境解决，agent 必须停止并明确告知用户阻塞原因，不能绕过检查继续提交或推送。
 
 ## 交互约束
 

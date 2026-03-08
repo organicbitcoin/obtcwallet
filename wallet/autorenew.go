@@ -12,12 +12,11 @@ import (
 )
 
 const (
-	defaultAutoRenewInterval                    = 30 * time.Minute
-	defaultAutoRenewFailureBackoff              = 15 * time.Minute
-	defaultAutoRenewExpiryWindowBlocks          = 3679200
-	defaultAutoRenewExpiringThresholdBlks       = 144 * 180
-	autoRenewDustThresholdSat             int64 = 546
-	defaultAutoRenewLabel                       = "obtc.autorenew"
+	defaultAutoRenewInterval              = 30 * time.Minute
+	defaultAutoRenewFailureBackoff        = 15 * time.Minute
+	defaultAutoRenewExpiryWindowBlocks    = CompatibilityExpiryWindowBlocks
+	defaultAutoRenewExpiringThresholdBlks = maxDefaultExpiringThresholdBlocks
+	defaultAutoRenewLabel                 = "obtc.autorenew"
 )
 
 type AutoRenewPolicy struct {
@@ -193,6 +192,13 @@ func (w *Wallet) ConfigureAutoRenew(cfg AutoRenewRuntimeConfig) error {
 		return err
 	}
 	cfg = normalizeAutoRenewRuntimeConfig(cfg)
+	resolvedPolicy, policyWarnings := ResolveExpiryPolicy(w.ChainParams())
+	if cfg.ExpiryWindowBlocks == defaultAutoRenewExpiryWindowBlocks {
+		cfg.ExpiryWindowBlocks = resolvedPolicy.WindowBlocks
+	}
+	if cfg.ExpiringThresholdBlocks == defaultAutoRenewExpiringThresholdBlks {
+		cfg.ExpiringThresholdBlocks = resolvedPolicy.ExpiringThresholdBlocks
+	}
 
 	w.autoRenewMu.Lock()
 	w.autoRenewCfg = cfg
@@ -216,6 +222,13 @@ func (w *Wallet) ConfigureAutoRenew(cfg AutoRenewRuntimeConfig) error {
 		cfg.Policy.MaxUtxosPerRun, cfg.Policy.MaxFeeRateSatPerKB,
 		int64(cfg.Amount), int64(cfg.MaxRenewAmountPerRun), cfg.MinConf,
 	)
+	log.Infof("Auto-renew expiry policy resolved: source=%s window_blocks=%d expiring_threshold_blocks=%d dust_threshold_sat=%d",
+		resolvedPolicy.Source, cfg.ExpiryWindowBlocks,
+		cfg.ExpiringThresholdBlocks, resolvedPolicy.DustThresholdSat,
+	)
+	for _, warning := range policyWarnings {
+		log.Warnf("Auto-renew expiry policy warning: %s", warning)
+	}
 
 	return nil
 }
@@ -384,6 +397,7 @@ func (w *Wallet) buildAutoRenewCandidates(cfg AutoRenewRuntimeConfig) ([]autoRen
 	}
 
 	tipHeight := w.Manager.SyncedTo().Height
+	resolvedPolicy, _ := ResolveExpiryPolicy(w.ChainParams())
 	candidates := make([]autoRenewCandidate, 0, len(outputs))
 	for _, out := range outputs {
 		createHeight := out.ContainingBlock.Height
@@ -396,7 +410,7 @@ func (w *Wallet) buildAutoRenewCandidates(cfg AutoRenewRuntimeConfig) ([]autoRen
 		info, err := BuildExpiryInfo(
 			createHeight, tipHeight, cfg.ExpiryWindowBlocks,
 			cfg.ExpiringThresholdBlocks, amountSat,
-			projectedReclaimSat, autoRenewDustThresholdSat,
+			projectedReclaimSat, resolvedPolicy.DustThresholdSat,
 		)
 		if err != nil {
 			log.Warnf("Auto-renew skipped outpoint %s due to invalid expiry info: %v",

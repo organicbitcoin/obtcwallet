@@ -29,24 +29,19 @@ import (
 )
 
 const (
-	defaultAgentWalletID                   = "default"
-	defaultReservationTTLSeconds    int64  = 300
-	defaultExpiryWindowBlocks       uint64 = 3679200
-	defaultExpiringThresholdBlks    int32  = 144 * 180
-	defaultExpiryResultLimit               = 100
-	defaultDustThresholdSat         int64  = 546
-	defaultProjectedReclaimRatioBps        = 7000
+	defaultAgentWalletID               = "default"
+	defaultReservationTTLSeconds int64 = 300
+	defaultExpiryResultLimit           = 100
 
 	operationKindRenewPreview = "renewal_preview"
 	operationStateDraft       = "DRAFT"
 
-	expiryPolicySourceCompatibilityDefault = "compatibility_default"
-	expiryPolicySourceRequestOverride      = "request_override"
+	expiryPolicySourceRequestOverride = "request_override"
 )
 
 // AgentExpiryPolicyProvider resolves the effective expiry policy used by the
-// agent-facing API. The default implementation currently falls back to
-// compatibility defaults until chain-aware OBTC parameters are wired in.
+// agent-facing API. The default implementation prefers a real OBTC chaincfg
+// source when available and otherwise falls back to built-in/default values.
 type AgentExpiryPolicyProvider interface {
 	PolicyForWallet(wallet *wallet.Wallet) (agentExpiryPolicy, []string, error)
 }
@@ -67,17 +62,16 @@ type agentExpiryPolicy struct {
 type compatibilityExpiryPolicyProvider struct{}
 
 func (compatibilityExpiryPolicyProvider) PolicyForWallet(
-	_ *wallet.Wallet) (agentExpiryPolicy, []string, error) {
+	w *wallet.Wallet) (agentExpiryPolicy, []string, error) {
 
+	resolvedPolicy, warnings := wallet.ResolveExpiryPolicy(w.ChainParams())
 	return agentExpiryPolicy{
-			WindowBlocks:             defaultExpiryWindowBlocks,
-			ExpiringThresholdBlocks:  defaultExpiringThresholdBlks,
-			DustThresholdSat:         defaultDustThresholdSat,
-			ProjectedReclaimRatioBps: defaultProjectedReclaimRatioBps,
-			Source:                   expiryPolicySourceCompatibilityDefault,
-		}, []string{
-			"using compatibility default expiry policy; chain-aware OBTC parameters are not wired yet",
-		}, nil
+		WindowBlocks:             resolvedPolicy.WindowBlocks,
+		ExpiringThresholdBlocks:  resolvedPolicy.ExpiringThresholdBlocks,
+		DustThresholdSat:         resolvedPolicy.DustThresholdSat,
+		ProjectedReclaimRatioBps: resolvedPolicy.ProjectedReclaimRatioBps,
+		Source:                   resolvedPolicy.Source,
+	}, warnings, nil
 }
 
 type agentWalletServer struct {
