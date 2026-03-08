@@ -141,6 +141,90 @@ func (x *ResponseMeta) GetWarnings() []string {
 	return nil
 }
 
+type SignerBackendInfo struct {
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	BackendId                   string                 `protobuf:"bytes,1,opt,name=backend_id,json=backendId,proto3" json:"backend_id,omitempty"`
+	Mode                        string                 `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
+	LocalSigningAvailable       bool                   `protobuf:"varint,3,opt,name=local_signing_available,json=localSigningAvailable,proto3" json:"local_signing_available,omitempty"`
+	ExternalSignedPsbtSupported bool                   `protobuf:"varint,4,opt,name=external_signed_psbt_supported,json=externalSignedPsbtSupported,proto3" json:"external_signed_psbt_supported,omitempty"`
+	MaxActiveSessions           uint32                 `protobuf:"varint,5,opt,name=max_active_sessions,json=maxActiveSessions,proto3" json:"max_active_sessions,omitempty"`
+	Description                 string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
+}
+
+func (x *SignerBackendInfo) Reset() {
+	*x = SignerBackendInfo{}
+	mi := &file_agentwallet_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignerBackendInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignerBackendInfo) ProtoMessage() {}
+
+func (x *SignerBackendInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignerBackendInfo.ProtoReflect.Descriptor instead.
+func (*SignerBackendInfo) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SignerBackendInfo) GetBackendId() string {
+	if x != nil {
+		return x.BackendId
+	}
+	return ""
+}
+
+func (x *SignerBackendInfo) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *SignerBackendInfo) GetLocalSigningAvailable() bool {
+	if x != nil {
+		return x.LocalSigningAvailable
+	}
+	return false
+}
+
+func (x *SignerBackendInfo) GetExternalSignedPsbtSupported() bool {
+	if x != nil {
+		return x.ExternalSignedPsbtSupported
+	}
+	return false
+}
+
+func (x *SignerBackendInfo) GetMaxActiveSessions() uint32 {
+	if x != nil {
+		return x.MaxActiveSessions
+	}
+	return 0
+}
+
+func (x *SignerBackendInfo) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
 type WalletState struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	WalletId           string                 `protobuf:"bytes,1,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
@@ -150,13 +234,14 @@ type WalletState struct {
 	Locked             bool                   `protobuf:"varint,5,opt,name=locked,proto3" json:"locked,omitempty"`
 	CurrentBlockHeight int32                  `protobuf:"varint,6,opt,name=current_block_height,json=currentBlockHeight,proto3" json:"current_block_height,omitempty"`
 	CurrentBlockHash   []byte                 `protobuf:"bytes,7,opt,name=current_block_hash,json=currentBlockHash,proto3" json:"current_block_hash,omitempty"`
+	SignerBackend      *SignerBackendInfo     `protobuf:"bytes,8,opt,name=signer_backend,json=signerBackend,proto3" json:"signer_backend,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
 func (x *WalletState) Reset() {
 	*x = WalletState{}
-	mi := &file_agentwallet_proto_msgTypes[2]
+	mi := &file_agentwallet_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -168,7 +253,7 @@ func (x *WalletState) String() string {
 func (*WalletState) ProtoMessage() {}
 
 func (x *WalletState) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[2]
+	mi := &file_agentwallet_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -181,7 +266,7 @@ func (x *WalletState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalletState.ProtoReflect.Descriptor instead.
 func (*WalletState) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{2}
+	return file_agentwallet_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *WalletState) GetWalletId() string {
@@ -233,6 +318,13 @@ func (x *WalletState) GetCurrentBlockHash() []byte {
 	return nil
 }
 
+func (x *WalletState) GetSignerBackend() *SignerBackendInfo {
+	if x != nil {
+		return x.SignerBackend
+	}
+	return nil
+}
+
 type GetWalletStateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
@@ -243,7 +335,7 @@ type GetWalletStateRequest struct {
 
 func (x *GetWalletStateRequest) Reset() {
 	*x = GetWalletStateRequest{}
-	mi := &file_agentwallet_proto_msgTypes[3]
+	mi := &file_agentwallet_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -255,7 +347,7 @@ func (x *GetWalletStateRequest) String() string {
 func (*GetWalletStateRequest) ProtoMessage() {}
 
 func (x *GetWalletStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[3]
+	mi := &file_agentwallet_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -268,7 +360,7 @@ func (x *GetWalletStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWalletStateRequest.ProtoReflect.Descriptor instead.
 func (*GetWalletStateRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{3}
+	return file_agentwallet_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetWalletStateRequest) GetMeta() *RequestMeta {
@@ -295,7 +387,7 @@ type GetWalletStateResponse struct {
 
 func (x *GetWalletStateResponse) Reset() {
 	*x = GetWalletStateResponse{}
-	mi := &file_agentwallet_proto_msgTypes[4]
+	mi := &file_agentwallet_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +399,7 @@ func (x *GetWalletStateResponse) String() string {
 func (*GetWalletStateResponse) ProtoMessage() {}
 
 func (x *GetWalletStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[4]
+	mi := &file_agentwallet_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,7 +412,7 @@ func (x *GetWalletStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWalletStateResponse.ProtoReflect.Descriptor instead.
 func (*GetWalletStateResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{4}
+	return file_agentwallet_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetWalletStateResponse) GetMeta() *ResponseMeta {
@@ -353,7 +445,7 @@ type Utxo struct {
 
 func (x *Utxo) Reset() {
 	*x = Utxo{}
-	mi := &file_agentwallet_proto_msgTypes[5]
+	mi := &file_agentwallet_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -365,7 +457,7 @@ func (x *Utxo) String() string {
 func (*Utxo) ProtoMessage() {}
 
 func (x *Utxo) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[5]
+	mi := &file_agentwallet_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -378,7 +470,7 @@ func (x *Utxo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Utxo.ProtoReflect.Descriptor instead.
 func (*Utxo) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{5}
+	return file_agentwallet_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Utxo) GetOutpoint() string {
@@ -449,7 +541,7 @@ type ListUtxosRequest struct {
 
 func (x *ListUtxosRequest) Reset() {
 	*x = ListUtxosRequest{}
-	mi := &file_agentwallet_proto_msgTypes[6]
+	mi := &file_agentwallet_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +553,7 @@ func (x *ListUtxosRequest) String() string {
 func (*ListUtxosRequest) ProtoMessage() {}
 
 func (x *ListUtxosRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[6]
+	mi := &file_agentwallet_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +566,7 @@ func (x *ListUtxosRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUtxosRequest.ProtoReflect.Descriptor instead.
 func (*ListUtxosRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{6}
+	return file_agentwallet_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListUtxosRequest) GetMeta() *RequestMeta {
@@ -515,7 +607,7 @@ type ListUtxosResponse struct {
 
 func (x *ListUtxosResponse) Reset() {
 	*x = ListUtxosResponse{}
-	mi := &file_agentwallet_proto_msgTypes[7]
+	mi := &file_agentwallet_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -527,7 +619,7 @@ func (x *ListUtxosResponse) String() string {
 func (*ListUtxosResponse) ProtoMessage() {}
 
 func (x *ListUtxosResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[7]
+	mi := &file_agentwallet_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -540,7 +632,7 @@ func (x *ListUtxosResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUtxosResponse.ProtoReflect.Descriptor instead.
 func (*ListUtxosResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{7}
+	return file_agentwallet_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListUtxosResponse) GetMeta() *ResponseMeta {
@@ -570,7 +662,7 @@ type ExpiryPolicy struct {
 
 func (x *ExpiryPolicy) Reset() {
 	*x = ExpiryPolicy{}
-	mi := &file_agentwallet_proto_msgTypes[8]
+	mi := &file_agentwallet_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -582,7 +674,7 @@ func (x *ExpiryPolicy) String() string {
 func (*ExpiryPolicy) ProtoMessage() {}
 
 func (x *ExpiryPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[8]
+	mi := &file_agentwallet_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -595,7 +687,7 @@ func (x *ExpiryPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpiryPolicy.ProtoReflect.Descriptor instead.
 func (*ExpiryPolicy) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{8}
+	return file_agentwallet_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ExpiryPolicy) GetWindowBlocks() uint64 {
@@ -649,7 +741,7 @@ type ExpiryRisk struct {
 
 func (x *ExpiryRisk) Reset() {
 	*x = ExpiryRisk{}
-	mi := &file_agentwallet_proto_msgTypes[9]
+	mi := &file_agentwallet_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -661,7 +753,7 @@ func (x *ExpiryRisk) String() string {
 func (*ExpiryRisk) ProtoMessage() {}
 
 func (x *ExpiryRisk) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[9]
+	mi := &file_agentwallet_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -674,7 +766,7 @@ func (x *ExpiryRisk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpiryRisk.ProtoReflect.Descriptor instead.
 func (*ExpiryRisk) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{9}
+	return file_agentwallet_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ExpiryRisk) GetOutpoint() string {
@@ -749,7 +841,7 @@ type GetExpiryRiskRequest struct {
 
 func (x *GetExpiryRiskRequest) Reset() {
 	*x = GetExpiryRiskRequest{}
-	mi := &file_agentwallet_proto_msgTypes[10]
+	mi := &file_agentwallet_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -761,7 +853,7 @@ func (x *GetExpiryRiskRequest) String() string {
 func (*GetExpiryRiskRequest) ProtoMessage() {}
 
 func (x *GetExpiryRiskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[10]
+	mi := &file_agentwallet_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -774,7 +866,7 @@ func (x *GetExpiryRiskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetExpiryRiskRequest.ProtoReflect.Descriptor instead.
 func (*GetExpiryRiskRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{10}
+	return file_agentwallet_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetExpiryRiskRequest) GetMeta() *RequestMeta {
@@ -845,7 +937,7 @@ type GetExpiryRiskResponse struct {
 
 func (x *GetExpiryRiskResponse) Reset() {
 	*x = GetExpiryRiskResponse{}
-	mi := &file_agentwallet_proto_msgTypes[11]
+	mi := &file_agentwallet_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -857,7 +949,7 @@ func (x *GetExpiryRiskResponse) String() string {
 func (*GetExpiryRiskResponse) ProtoMessage() {}
 
 func (x *GetExpiryRiskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[11]
+	mi := &file_agentwallet_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -870,7 +962,7 @@ func (x *GetExpiryRiskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetExpiryRiskResponse.ProtoReflect.Descriptor instead.
 func (*GetExpiryRiskResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{11}
+	return file_agentwallet_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetExpiryRiskResponse) GetMeta() *ResponseMeta {
@@ -919,7 +1011,7 @@ type TransactionSummary struct {
 
 func (x *TransactionSummary) Reset() {
 	*x = TransactionSummary{}
-	mi := &file_agentwallet_proto_msgTypes[12]
+	mi := &file_agentwallet_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -931,7 +1023,7 @@ func (x *TransactionSummary) String() string {
 func (*TransactionSummary) ProtoMessage() {}
 
 func (x *TransactionSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[12]
+	mi := &file_agentwallet_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -944,7 +1036,7 @@ func (x *TransactionSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionSummary.ProtoReflect.Descriptor instead.
 func (*TransactionSummary) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{12}
+	return file_agentwallet_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *TransactionSummary) GetInputCount() int32 {
@@ -1017,31 +1109,407 @@ func (x *TransactionSummary) GetFeeRateSatPerKb() int64 {
 	return 0
 }
 
-type Operation struct {
+type Capability struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	OperationId      string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Kind             string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	State            string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
-	WalletId         string                 `protobuf:"bytes,4,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
-	AccountNumber    uint32                 `protobuf:"varint,5,opt,name=account_number,json=accountNumber,proto3" json:"account_number,omitempty"`
-	Outpoints        []string               `protobuf:"bytes,6,rep,name=outpoints,proto3" json:"outpoints,omitempty"`
-	PolicyVerdict    string                 `protobuf:"bytes,7,opt,name=policy_verdict,json=policyVerdict,proto3" json:"policy_verdict,omitempty"`
-	Warnings         []string               `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	CreatedAtUnix    int64                  `protobuf:"varint,9,opt,name=created_at_unix,json=createdAtUnix,proto3" json:"created_at_unix,omitempty"`
-	UpdatedAtUnix    int64                  `protobuf:"varint,10,opt,name=updated_at_unix,json=updatedAtUnix,proto3" json:"updated_at_unix,omitempty"`
-	ReservationId    string                 `protobuf:"bytes,11,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
-	Summary          *TransactionSummary    `protobuf:"bytes,12,opt,name=summary,proto3" json:"summary,omitempty"`
-	ExpiryRisks      []*ExpiryRisk          `protobuf:"bytes,13,rep,name=expiry_risks,json=expiryRisks,proto3" json:"expiry_risks,omitempty"`
-	EffectivePolicy  *ExpiryPolicy          `protobuf:"bytes,14,opt,name=effective_policy,json=effectivePolicy,proto3" json:"effective_policy,omitempty"`
-	MinConfirmations int32                  `protobuf:"varint,15,opt,name=min_confirmations,json=minConfirmations,proto3" json:"min_confirmations,omitempty"`
-	Txid             string                 `protobuf:"bytes,16,opt,name=txid,proto3" json:"txid,omitempty"`
+	CapabilityId     string                 `protobuf:"bytes,1,opt,name=capability_id,json=capabilityId,proto3" json:"capability_id,omitempty"`
+	WalletId         string                 `protobuf:"bytes,2,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
+	Principal        string                 `protobuf:"bytes,3,opt,name=principal,proto3" json:"principal,omitempty"`
+	Permissions      []string               `protobuf:"bytes,4,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	CreatedAtUnix    int64                  `protobuf:"varint,5,opt,name=created_at_unix,json=createdAtUnix,proto3" json:"created_at_unix,omitempty"`
+	ExpiresAtUnix    int64                  `protobuf:"varint,6,opt,name=expires_at_unix,json=expiresAtUnix,proto3" json:"expires_at_unix,omitempty"`
+	Revoked          bool                   `protobuf:"varint,7,opt,name=revoked,proto3" json:"revoked,omitempty"`
+	RevokedAtUnix    int64                  `protobuf:"varint,8,opt,name=revoked_at_unix,json=revokedAtUnix,proto3" json:"revoked_at_unix,omitempty"`
+	RevocationReason string                 `protobuf:"bytes,9,opt,name=revocation_reason,json=revocationReason,proto3" json:"revocation_reason,omitempty"`
+	IssuedBy         string                 `protobuf:"bytes,10,opt,name=issued_by,json=issuedBy,proto3" json:"issued_by,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
+func (x *Capability) Reset() {
+	*x = Capability{}
+	mi := &file_agentwallet_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Capability) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Capability) ProtoMessage() {}
+
+func (x *Capability) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Capability.ProtoReflect.Descriptor instead.
+func (*Capability) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *Capability) GetCapabilityId() string {
+	if x != nil {
+		return x.CapabilityId
+	}
+	return ""
+}
+
+func (x *Capability) GetWalletId() string {
+	if x != nil {
+		return x.WalletId
+	}
+	return ""
+}
+
+func (x *Capability) GetPrincipal() string {
+	if x != nil {
+		return x.Principal
+	}
+	return ""
+}
+
+func (x *Capability) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
+func (x *Capability) GetCreatedAtUnix() int64 {
+	if x != nil {
+		return x.CreatedAtUnix
+	}
+	return 0
+}
+
+func (x *Capability) GetExpiresAtUnix() int64 {
+	if x != nil {
+		return x.ExpiresAtUnix
+	}
+	return 0
+}
+
+func (x *Capability) GetRevoked() bool {
+	if x != nil {
+		return x.Revoked
+	}
+	return false
+}
+
+func (x *Capability) GetRevokedAtUnix() int64 {
+	if x != nil {
+		return x.RevokedAtUnix
+	}
+	return 0
+}
+
+func (x *Capability) GetRevocationReason() string {
+	if x != nil {
+		return x.RevocationReason
+	}
+	return ""
+}
+
+func (x *Capability) GetIssuedBy() string {
+	if x != nil {
+		return x.IssuedBy
+	}
+	return ""
+}
+
+type SignerSession struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	SignerSessionId    string                 `protobuf:"bytes,1,opt,name=signer_session_id,json=signerSessionId,proto3" json:"signer_session_id,omitempty"`
+	WalletId           string                 `protobuf:"bytes,2,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
+	CapabilityId       string                 `protobuf:"bytes,3,opt,name=capability_id,json=capabilityId,proto3" json:"capability_id,omitempty"`
+	Principal          string                 `protobuf:"bytes,4,opt,name=principal,proto3" json:"principal,omitempty"`
+	Permissions        []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	CreatedAtUnix      int64                  `protobuf:"varint,6,opt,name=created_at_unix,json=createdAtUnix,proto3" json:"created_at_unix,omitempty"`
+	ExpiresAtUnix      int64                  `protobuf:"varint,7,opt,name=expires_at_unix,json=expiresAtUnix,proto3" json:"expires_at_unix,omitempty"`
+	Closed             bool                   `protobuf:"varint,8,opt,name=closed,proto3" json:"closed,omitempty"`
+	ClosedAtUnix       int64                  `protobuf:"varint,9,opt,name=closed_at_unix,json=closedAtUnix,proto3" json:"closed_at_unix,omitempty"`
+	CloseReason        string                 `protobuf:"bytes,10,opt,name=close_reason,json=closeReason,proto3" json:"close_reason,omitempty"`
+	Reason             string                 `protobuf:"bytes,11,opt,name=reason,proto3" json:"reason,omitempty"`
+	OpenRequestId      string                 `protobuf:"bytes,12,opt,name=open_request_id,json=openRequestId,proto3" json:"open_request_id,omitempty"`
+	OpenIdempotencyKey string                 `protobuf:"bytes,13,opt,name=open_idempotency_key,json=openIdempotencyKey,proto3" json:"open_idempotency_key,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *SignerSession) Reset() {
+	*x = SignerSession{}
+	mi := &file_agentwallet_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignerSession) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignerSession) ProtoMessage() {}
+
+func (x *SignerSession) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignerSession.ProtoReflect.Descriptor instead.
+func (*SignerSession) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SignerSession) GetSignerSessionId() string {
+	if x != nil {
+		return x.SignerSessionId
+	}
+	return ""
+}
+
+func (x *SignerSession) GetWalletId() string {
+	if x != nil {
+		return x.WalletId
+	}
+	return ""
+}
+
+func (x *SignerSession) GetCapabilityId() string {
+	if x != nil {
+		return x.CapabilityId
+	}
+	return ""
+}
+
+func (x *SignerSession) GetPrincipal() string {
+	if x != nil {
+		return x.Principal
+	}
+	return ""
+}
+
+func (x *SignerSession) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
+func (x *SignerSession) GetCreatedAtUnix() int64 {
+	if x != nil {
+		return x.CreatedAtUnix
+	}
+	return 0
+}
+
+func (x *SignerSession) GetExpiresAtUnix() int64 {
+	if x != nil {
+		return x.ExpiresAtUnix
+	}
+	return 0
+}
+
+func (x *SignerSession) GetClosed() bool {
+	if x != nil {
+		return x.Closed
+	}
+	return false
+}
+
+func (x *SignerSession) GetClosedAtUnix() int64 {
+	if x != nil {
+		return x.ClosedAtUnix
+	}
+	return 0
+}
+
+func (x *SignerSession) GetCloseReason() string {
+	if x != nil {
+		return x.CloseReason
+	}
+	return ""
+}
+
+func (x *SignerSession) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *SignerSession) GetOpenRequestId() string {
+	if x != nil {
+		return x.OpenRequestId
+	}
+	return ""
+}
+
+func (x *SignerSession) GetOpenIdempotencyKey() string {
+	if x != nil {
+		return x.OpenIdempotencyKey
+	}
+	return ""
+}
+
+type OperationEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventId       string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	Action        string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	FromState     string                 `protobuf:"bytes,3,opt,name=from_state,json=fromState,proto3" json:"from_state,omitempty"`
+	ToState       string                 `protobuf:"bytes,4,opt,name=to_state,json=toState,proto3" json:"to_state,omitempty"`
+	RequestId     string                 `protobuf:"bytes,5,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Principal     string                 `protobuf:"bytes,6,opt,name=principal,proto3" json:"principal,omitempty"`
+	CapabilityId  string                 `protobuf:"bytes,7,opt,name=capability_id,json=capabilityId,proto3" json:"capability_id,omitempty"`
+	Warnings      []string               `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	CreatedAtUnix int64                  `protobuf:"varint,9,opt,name=created_at_unix,json=createdAtUnix,proto3" json:"created_at_unix,omitempty"`
+	Txid          string                 `protobuf:"bytes,10,opt,name=txid,proto3" json:"txid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperationEvent) Reset() {
+	*x = OperationEvent{}
+	mi := &file_agentwallet_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperationEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperationEvent) ProtoMessage() {}
+
+func (x *OperationEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperationEvent.ProtoReflect.Descriptor instead.
+func (*OperationEvent) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *OperationEvent) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *OperationEvent) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *OperationEvent) GetFromState() string {
+	if x != nil {
+		return x.FromState
+	}
+	return ""
+}
+
+func (x *OperationEvent) GetToState() string {
+	if x != nil {
+		return x.ToState
+	}
+	return ""
+}
+
+func (x *OperationEvent) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *OperationEvent) GetPrincipal() string {
+	if x != nil {
+		return x.Principal
+	}
+	return ""
+}
+
+func (x *OperationEvent) GetCapabilityId() string {
+	if x != nil {
+		return x.CapabilityId
+	}
+	return ""
+}
+
+func (x *OperationEvent) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
+func (x *OperationEvent) GetCreatedAtUnix() int64 {
+	if x != nil {
+		return x.CreatedAtUnix
+	}
+	return 0
+}
+
+func (x *OperationEvent) GetTxid() string {
+	if x != nil {
+		return x.Txid
+	}
+	return ""
+}
+
+type Operation struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	OperationId          string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Kind                 string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	State                string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	WalletId             string                 `protobuf:"bytes,4,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
+	AccountNumber        uint32                 `protobuf:"varint,5,opt,name=account_number,json=accountNumber,proto3" json:"account_number,omitempty"`
+	Outpoints            []string               `protobuf:"bytes,6,rep,name=outpoints,proto3" json:"outpoints,omitempty"`
+	PolicyVerdict        string                 `protobuf:"bytes,7,opt,name=policy_verdict,json=policyVerdict,proto3" json:"policy_verdict,omitempty"`
+	Warnings             []string               `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	CreatedAtUnix        int64                  `protobuf:"varint,9,opt,name=created_at_unix,json=createdAtUnix,proto3" json:"created_at_unix,omitempty"`
+	UpdatedAtUnix        int64                  `protobuf:"varint,10,opt,name=updated_at_unix,json=updatedAtUnix,proto3" json:"updated_at_unix,omitempty"`
+	ReservationId        string                 `protobuf:"bytes,11,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
+	Summary              *TransactionSummary    `protobuf:"bytes,12,opt,name=summary,proto3" json:"summary,omitempty"`
+	ExpiryRisks          []*ExpiryRisk          `protobuf:"bytes,13,rep,name=expiry_risks,json=expiryRisks,proto3" json:"expiry_risks,omitempty"`
+	EffectivePolicy      *ExpiryPolicy          `protobuf:"bytes,14,opt,name=effective_policy,json=effectivePolicy,proto3" json:"effective_policy,omitempty"`
+	MinConfirmations     int32                  `protobuf:"varint,15,opt,name=min_confirmations,json=minConfirmations,proto3" json:"min_confirmations,omitempty"`
+	Txid                 string                 `protobuf:"bytes,16,opt,name=txid,proto3" json:"txid,omitempty"`
+	CreatorPrincipal     string                 `protobuf:"bytes,17,opt,name=creator_principal,json=creatorPrincipal,proto3" json:"creator_principal,omitempty"`
+	CreatorCapabilityId  string                 `protobuf:"bytes,18,opt,name=creator_capability_id,json=creatorCapabilityId,proto3" json:"creator_capability_id,omitempty"`
+	CreateIdempotencyKey string                 `protobuf:"bytes,19,opt,name=create_idempotency_key,json=createIdempotencyKey,proto3" json:"create_idempotency_key,omitempty"`
+	History              []*OperationEvent      `protobuf:"bytes,20,rep,name=history,proto3" json:"history,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
 func (x *Operation) Reset() {
 	*x = Operation{}
-	mi := &file_agentwallet_proto_msgTypes[13]
+	mi := &file_agentwallet_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1053,7 +1521,7 @@ func (x *Operation) String() string {
 func (*Operation) ProtoMessage() {}
 
 func (x *Operation) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[13]
+	mi := &file_agentwallet_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1066,7 +1534,7 @@ func (x *Operation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Operation.ProtoReflect.Descriptor instead.
 func (*Operation) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{13}
+	return file_agentwallet_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Operation) GetOperationId() string {
@@ -1181,6 +1649,34 @@ func (x *Operation) GetTxid() string {
 	return ""
 }
 
+func (x *Operation) GetCreatorPrincipal() string {
+	if x != nil {
+		return x.CreatorPrincipal
+	}
+	return ""
+}
+
+func (x *Operation) GetCreatorCapabilityId() string {
+	if x != nil {
+		return x.CreatorCapabilityId
+	}
+	return ""
+}
+
+func (x *Operation) GetCreateIdempotencyKey() string {
+	if x != nil {
+		return x.CreateIdempotencyKey
+	}
+	return ""
+}
+
+func (x *Operation) GetHistory() []*OperationEvent {
+	if x != nil {
+		return x.History
+	}
+	return nil
+}
+
 type PreviewRenewalRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Meta               *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
@@ -1200,7 +1696,7 @@ type PreviewRenewalRequest struct {
 
 func (x *PreviewRenewalRequest) Reset() {
 	*x = PreviewRenewalRequest{}
-	mi := &file_agentwallet_proto_msgTypes[14]
+	mi := &file_agentwallet_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1212,7 +1708,7 @@ func (x *PreviewRenewalRequest) String() string {
 func (*PreviewRenewalRequest) ProtoMessage() {}
 
 func (x *PreviewRenewalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[14]
+	mi := &file_agentwallet_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1225,7 +1721,7 @@ func (x *PreviewRenewalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRenewalRequest.ProtoReflect.Descriptor instead.
 func (*PreviewRenewalRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{14}
+	return file_agentwallet_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PreviewRenewalRequest) GetMeta() *RequestMeta {
@@ -1320,7 +1816,7 @@ type PreviewRenewalResponse struct {
 
 func (x *PreviewRenewalResponse) Reset() {
 	*x = PreviewRenewalResponse{}
-	mi := &file_agentwallet_proto_msgTypes[15]
+	mi := &file_agentwallet_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1332,7 +1828,7 @@ func (x *PreviewRenewalResponse) String() string {
 func (*PreviewRenewalResponse) ProtoMessage() {}
 
 func (x *PreviewRenewalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[15]
+	mi := &file_agentwallet_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1345,7 +1841,7 @@ func (x *PreviewRenewalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRenewalResponse.ProtoReflect.Descriptor instead.
 func (*PreviewRenewalResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{15}
+	return file_agentwallet_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PreviewRenewalResponse) GetMeta() *ResponseMeta {
@@ -1397,18 +1893,923 @@ func (x *PreviewRenewalResponse) GetExpiryRisks() []*ExpiryRisk {
 	return nil
 }
 
-type SubmitRenewalRequest struct {
+type IssueCapabilityRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	OperationId   string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	WalletId      string                 `protobuf:"bytes,2,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
+	Principal     string                 `protobuf:"bytes,3,opt,name=principal,proto3" json:"principal,omitempty"`
+	Permissions   []string               `protobuf:"bytes,4,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	TtlSeconds    int64                  `protobuf:"varint,5,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *IssueCapabilityRequest) Reset() {
+	*x = IssueCapabilityRequest{}
+	mi := &file_agentwallet_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueCapabilityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueCapabilityRequest) ProtoMessage() {}
+
+func (x *IssueCapabilityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueCapabilityRequest.ProtoReflect.Descriptor instead.
+func (*IssueCapabilityRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *IssueCapabilityRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *IssueCapabilityRequest) GetWalletId() string {
+	if x != nil {
+		return x.WalletId
+	}
+	return ""
+}
+
+func (x *IssueCapabilityRequest) GetPrincipal() string {
+	if x != nil {
+		return x.Principal
+	}
+	return ""
+}
+
+func (x *IssueCapabilityRequest) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
+func (x *IssueCapabilityRequest) GetTtlSeconds() int64 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+type IssueCapabilityResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Capability    *Capability            `protobuf:"bytes,2,opt,name=capability,proto3" json:"capability,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IssueCapabilityResponse) Reset() {
+	*x = IssueCapabilityResponse{}
+	mi := &file_agentwallet_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueCapabilityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueCapabilityResponse) ProtoMessage() {}
+
+func (x *IssueCapabilityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueCapabilityResponse.ProtoReflect.Descriptor instead.
+func (*IssueCapabilityResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *IssueCapabilityResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *IssueCapabilityResponse) GetCapability() *Capability {
+	if x != nil {
+		return x.Capability
+	}
+	return nil
+}
+
+type RevokeCapabilityRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	CapabilityId  string                 `protobuf:"bytes,2,opt,name=capability_id,json=capabilityId,proto3" json:"capability_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeCapabilityRequest) Reset() {
+	*x = RevokeCapabilityRequest{}
+	mi := &file_agentwallet_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeCapabilityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeCapabilityRequest) ProtoMessage() {}
+
+func (x *RevokeCapabilityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeCapabilityRequest.ProtoReflect.Descriptor instead.
+func (*RevokeCapabilityRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *RevokeCapabilityRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *RevokeCapabilityRequest) GetCapabilityId() string {
+	if x != nil {
+		return x.CapabilityId
+	}
+	return ""
+}
+
+func (x *RevokeCapabilityRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type RevokeCapabilityResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Capability    *Capability            `protobuf:"bytes,2,opt,name=capability,proto3" json:"capability,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeCapabilityResponse) Reset() {
+	*x = RevokeCapabilityResponse{}
+	mi := &file_agentwallet_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeCapabilityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeCapabilityResponse) ProtoMessage() {}
+
+func (x *RevokeCapabilityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeCapabilityResponse.ProtoReflect.Descriptor instead.
+func (*RevokeCapabilityResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *RevokeCapabilityResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *RevokeCapabilityResponse) GetCapability() *Capability {
+	if x != nil {
+		return x.Capability
+	}
+	return nil
+}
+
+type OpenSignerSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	WalletId      string                 `protobuf:"bytes,2,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
+	CapabilityId  string                 `protobuf:"bytes,3,opt,name=capability_id,json=capabilityId,proto3" json:"capability_id,omitempty"`
+	Passphrase    []byte                 `protobuf:"bytes,4,opt,name=passphrase,proto3" json:"passphrase,omitempty"`
+	TtlSeconds    int64                  `protobuf:"varint,5,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	Reason        string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenSignerSessionRequest) Reset() {
+	*x = OpenSignerSessionRequest{}
+	mi := &file_agentwallet_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenSignerSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenSignerSessionRequest) ProtoMessage() {}
+
+func (x *OpenSignerSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenSignerSessionRequest.ProtoReflect.Descriptor instead.
+func (*OpenSignerSessionRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *OpenSignerSessionRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *OpenSignerSessionRequest) GetWalletId() string {
+	if x != nil {
+		return x.WalletId
+	}
+	return ""
+}
+
+func (x *OpenSignerSessionRequest) GetCapabilityId() string {
+	if x != nil {
+		return x.CapabilityId
+	}
+	return ""
+}
+
+func (x *OpenSignerSessionRequest) GetPassphrase() []byte {
+	if x != nil {
+		return x.Passphrase
+	}
+	return nil
+}
+
+func (x *OpenSignerSessionRequest) GetTtlSeconds() int64 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+func (x *OpenSignerSessionRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type OpenSignerSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Session       *SignerSession         `protobuf:"bytes,2,opt,name=session,proto3" json:"session,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenSignerSessionResponse) Reset() {
+	*x = OpenSignerSessionResponse{}
+	mi := &file_agentwallet_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenSignerSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenSignerSessionResponse) ProtoMessage() {}
+
+func (x *OpenSignerSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenSignerSessionResponse.ProtoReflect.Descriptor instead.
+func (*OpenSignerSessionResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *OpenSignerSessionResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *OpenSignerSessionResponse) GetSession() *SignerSession {
+	if x != nil {
+		return x.Session
+	}
+	return nil
+}
+
+type GetSignerSessionRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Meta            *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	SignerSessionId string                 `protobuf:"bytes,2,opt,name=signer_session_id,json=signerSessionId,proto3" json:"signer_session_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetSignerSessionRequest) Reset() {
+	*x = GetSignerSessionRequest{}
+	mi := &file_agentwallet_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSignerSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSignerSessionRequest) ProtoMessage() {}
+
+func (x *GetSignerSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSignerSessionRequest.ProtoReflect.Descriptor instead.
+func (*GetSignerSessionRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *GetSignerSessionRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *GetSignerSessionRequest) GetSignerSessionId() string {
+	if x != nil {
+		return x.SignerSessionId
+	}
+	return ""
+}
+
+type GetSignerSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Session       *SignerSession         `protobuf:"bytes,2,opt,name=session,proto3" json:"session,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSignerSessionResponse) Reset() {
+	*x = GetSignerSessionResponse{}
+	mi := &file_agentwallet_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSignerSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSignerSessionResponse) ProtoMessage() {}
+
+func (x *GetSignerSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSignerSessionResponse.ProtoReflect.Descriptor instead.
+func (*GetSignerSessionResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *GetSignerSessionResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *GetSignerSessionResponse) GetSession() *SignerSession {
+	if x != nil {
+		return x.Session
+	}
+	return nil
+}
+
+type CloseSignerSessionRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Meta            *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	SignerSessionId string                 `protobuf:"bytes,2,opt,name=signer_session_id,json=signerSessionId,proto3" json:"signer_session_id,omitempty"`
+	Reason          string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CloseSignerSessionRequest) Reset() {
+	*x = CloseSignerSessionRequest{}
+	mi := &file_agentwallet_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseSignerSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseSignerSessionRequest) ProtoMessage() {}
+
+func (x *CloseSignerSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseSignerSessionRequest.ProtoReflect.Descriptor instead.
+func (*CloseSignerSessionRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *CloseSignerSessionRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *CloseSignerSessionRequest) GetSignerSessionId() string {
+	if x != nil {
+		return x.SignerSessionId
+	}
+	return ""
+}
+
+func (x *CloseSignerSessionRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type CloseSignerSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Session       *SignerSession         `protobuf:"bytes,2,opt,name=session,proto3" json:"session,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseSignerSessionResponse) Reset() {
+	*x = CloseSignerSessionResponse{}
+	mi := &file_agentwallet_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseSignerSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseSignerSessionResponse) ProtoMessage() {}
+
+func (x *CloseSignerSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseSignerSessionResponse.ProtoReflect.Descriptor instead.
+func (*CloseSignerSessionResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *CloseSignerSessionResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *CloseSignerSessionResponse) GetSession() *SignerSession {
+	if x != nil {
+		return x.Session
+	}
+	return nil
+}
+
+type SignPsbtRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Meta            *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	OperationId     string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	SignerSessionId string                 `protobuf:"bytes,3,opt,name=signer_session_id,json=signerSessionId,proto3" json:"signer_session_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SignPsbtRequest) Reset() {
+	*x = SignPsbtRequest{}
+	mi := &file_agentwallet_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignPsbtRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignPsbtRequest) ProtoMessage() {}
+
+func (x *SignPsbtRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignPsbtRequest.ProtoReflect.Descriptor instead.
+func (*SignPsbtRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *SignPsbtRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *SignPsbtRequest) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *SignPsbtRequest) GetSignerSessionId() string {
+	if x != nil {
+		return x.SignerSessionId
+	}
+	return ""
+}
+
+type SignPsbtResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Meta              *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Operation         *Operation             `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	SignedPsbt        []byte                 `protobuf:"bytes,3,opt,name=signed_psbt,json=signedPsbt,proto3" json:"signed_psbt,omitempty"`
+	SignedPsbtB64     string                 `protobuf:"bytes,4,opt,name=signed_psbt_b64,json=signedPsbtB64,proto3" json:"signed_psbt_b64,omitempty"`
+	SignedTransaction []byte                 `protobuf:"bytes,5,opt,name=signed_transaction,json=signedTransaction,proto3" json:"signed_transaction,omitempty"`
+	Summary           *TransactionSummary    `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *SignPsbtResponse) Reset() {
+	*x = SignPsbtResponse{}
+	mi := &file_agentwallet_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignPsbtResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignPsbtResponse) ProtoMessage() {}
+
+func (x *SignPsbtResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignPsbtResponse.ProtoReflect.Descriptor instead.
+func (*SignPsbtResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *SignPsbtResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *SignPsbtResponse) GetOperation() *Operation {
+	if x != nil {
+		return x.Operation
+	}
+	return nil
+}
+
+func (x *SignPsbtResponse) GetSignedPsbt() []byte {
+	if x != nil {
+		return x.SignedPsbt
+	}
+	return nil
+}
+
+func (x *SignPsbtResponse) GetSignedPsbtB64() string {
+	if x != nil {
+		return x.SignedPsbtB64
+	}
+	return ""
+}
+
+func (x *SignPsbtResponse) GetSignedTransaction() []byte {
+	if x != nil {
+		return x.SignedTransaction
+	}
+	return nil
+}
+
+func (x *SignPsbtResponse) GetSummary() *TransactionSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
+type PublishTransactionRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Meta            *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	OperationId     string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	SignedPsbt      []byte                 `protobuf:"bytes,3,opt,name=signed_psbt,json=signedPsbt,proto3" json:"signed_psbt,omitempty"`
+	Label           string                 `protobuf:"bytes,4,opt,name=label,proto3" json:"label,omitempty"`
+	SignerSessionId string                 `protobuf:"bytes,5,opt,name=signer_session_id,json=signerSessionId,proto3" json:"signer_session_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PublishTransactionRequest) Reset() {
+	*x = PublishTransactionRequest{}
+	mi := &file_agentwallet_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishTransactionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishTransactionRequest) ProtoMessage() {}
+
+func (x *PublishTransactionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishTransactionRequest.ProtoReflect.Descriptor instead.
+func (*PublishTransactionRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *PublishTransactionRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *PublishTransactionRequest) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *PublishTransactionRequest) GetSignedPsbt() []byte {
+	if x != nil {
+		return x.SignedPsbt
+	}
+	return nil
+}
+
+func (x *PublishTransactionRequest) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *PublishTransactionRequest) GetSignerSessionId() string {
+	if x != nil {
+		return x.SignerSessionId
+	}
+	return ""
+}
+
+type PublishTransactionResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Meta            *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Operation       *Operation             `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	Txid            string                 `protobuf:"bytes,3,opt,name=txid,proto3" json:"txid,omitempty"`
+	RawTransaction  []byte                 `protobuf:"bytes,4,opt,name=raw_transaction,json=rawTransaction,proto3" json:"raw_transaction,omitempty"`
+	Summary         *TransactionSummary    `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
+	EffectivePolicy *ExpiryPolicy          `protobuf:"bytes,6,opt,name=effective_policy,json=effectivePolicy,proto3" json:"effective_policy,omitempty"`
+	ExpiryRisks     []*ExpiryRisk          `protobuf:"bytes,7,rep,name=expiry_risks,json=expiryRisks,proto3" json:"expiry_risks,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PublishTransactionResponse) Reset() {
+	*x = PublishTransactionResponse{}
+	mi := &file_agentwallet_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishTransactionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishTransactionResponse) ProtoMessage() {}
+
+func (x *PublishTransactionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishTransactionResponse.ProtoReflect.Descriptor instead.
+func (*PublishTransactionResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *PublishTransactionResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *PublishTransactionResponse) GetOperation() *Operation {
+	if x != nil {
+		return x.Operation
+	}
+	return nil
+}
+
+func (x *PublishTransactionResponse) GetTxid() string {
+	if x != nil {
+		return x.Txid
+	}
+	return ""
+}
+
+func (x *PublishTransactionResponse) GetRawTransaction() []byte {
+	if x != nil {
+		return x.RawTransaction
+	}
+	return nil
+}
+
+func (x *PublishTransactionResponse) GetSummary() *TransactionSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
+func (x *PublishTransactionResponse) GetEffectivePolicy() *ExpiryPolicy {
+	if x != nil {
+		return x.EffectivePolicy
+	}
+	return nil
+}
+
+func (x *PublishTransactionResponse) GetExpiryRisks() []*ExpiryRisk {
+	if x != nil {
+		return x.ExpiryRisks
+	}
+	return nil
+}
+
+type SubmitRenewalRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Meta            *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	OperationId     string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Label           string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	SignerSessionId string                 `protobuf:"bytes,4,opt,name=signer_session_id,json=signerSessionId,proto3" json:"signer_session_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
 func (x *SubmitRenewalRequest) Reset() {
 	*x = SubmitRenewalRequest{}
-	mi := &file_agentwallet_proto_msgTypes[16]
+	mi := &file_agentwallet_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1420,7 +2821,7 @@ func (x *SubmitRenewalRequest) String() string {
 func (*SubmitRenewalRequest) ProtoMessage() {}
 
 func (x *SubmitRenewalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[16]
+	mi := &file_agentwallet_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1433,7 +2834,7 @@ func (x *SubmitRenewalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitRenewalRequest.ProtoReflect.Descriptor instead.
 func (*SubmitRenewalRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{16}
+	return file_agentwallet_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *SubmitRenewalRequest) GetMeta() *RequestMeta {
@@ -1457,6 +2858,13 @@ func (x *SubmitRenewalRequest) GetLabel() string {
 	return ""
 }
 
+func (x *SubmitRenewalRequest) GetSignerSessionId() string {
+	if x != nil {
+		return x.SignerSessionId
+	}
+	return ""
+}
+
 type SubmitRenewalResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Meta            *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
@@ -1472,7 +2880,7 @@ type SubmitRenewalResponse struct {
 
 func (x *SubmitRenewalResponse) Reset() {
 	*x = SubmitRenewalResponse{}
-	mi := &file_agentwallet_proto_msgTypes[17]
+	mi := &file_agentwallet_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1484,7 +2892,7 @@ func (x *SubmitRenewalResponse) String() string {
 func (*SubmitRenewalResponse) ProtoMessage() {}
 
 func (x *SubmitRenewalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[17]
+	mi := &file_agentwallet_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1497,7 +2905,7 @@ func (x *SubmitRenewalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitRenewalResponse.ProtoReflect.Descriptor instead.
 func (*SubmitRenewalResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{17}
+	return file_agentwallet_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SubmitRenewalResponse) GetMeta() *ResponseMeta {
@@ -1563,7 +2971,7 @@ type ReserveUtxosRequest struct {
 
 func (x *ReserveUtxosRequest) Reset() {
 	*x = ReserveUtxosRequest{}
-	mi := &file_agentwallet_proto_msgTypes[18]
+	mi := &file_agentwallet_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1575,7 +2983,7 @@ func (x *ReserveUtxosRequest) String() string {
 func (*ReserveUtxosRequest) ProtoMessage() {}
 
 func (x *ReserveUtxosRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[18]
+	mi := &file_agentwallet_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1588,7 +2996,7 @@ func (x *ReserveUtxosRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReserveUtxosRequest.ProtoReflect.Descriptor instead.
 func (*ReserveUtxosRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{18}
+	return file_agentwallet_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ReserveUtxosRequest) GetMeta() *RequestMeta {
@@ -1645,7 +3053,7 @@ type ReserveUtxosResponse struct {
 
 func (x *ReserveUtxosResponse) Reset() {
 	*x = ReserveUtxosResponse{}
-	mi := &file_agentwallet_proto_msgTypes[19]
+	mi := &file_agentwallet_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1657,7 +3065,7 @@ func (x *ReserveUtxosResponse) String() string {
 func (*ReserveUtxosResponse) ProtoMessage() {}
 
 func (x *ReserveUtxosResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[19]
+	mi := &file_agentwallet_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1670,7 +3078,7 @@ func (x *ReserveUtxosResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReserveUtxosResponse.ProtoReflect.Descriptor instead.
 func (*ReserveUtxosResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{19}
+	return file_agentwallet_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ReserveUtxosResponse) GetMeta() *ResponseMeta {
@@ -1711,7 +3119,7 @@ type ReleaseReservationRequest struct {
 
 func (x *ReleaseReservationRequest) Reset() {
 	*x = ReleaseReservationRequest{}
-	mi := &file_agentwallet_proto_msgTypes[20]
+	mi := &file_agentwallet_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1723,7 +3131,7 @@ func (x *ReleaseReservationRequest) String() string {
 func (*ReleaseReservationRequest) ProtoMessage() {}
 
 func (x *ReleaseReservationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[20]
+	mi := &file_agentwallet_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1736,7 +3144,7 @@ func (x *ReleaseReservationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseReservationRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseReservationRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{20}
+	return file_agentwallet_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ReleaseReservationRequest) GetMeta() *RequestMeta {
@@ -1764,7 +3172,7 @@ type ReleaseReservationResponse struct {
 
 func (x *ReleaseReservationResponse) Reset() {
 	*x = ReleaseReservationResponse{}
-	mi := &file_agentwallet_proto_msgTypes[21]
+	mi := &file_agentwallet_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1776,7 +3184,7 @@ func (x *ReleaseReservationResponse) String() string {
 func (*ReleaseReservationResponse) ProtoMessage() {}
 
 func (x *ReleaseReservationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[21]
+	mi := &file_agentwallet_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1789,7 +3197,7 @@ func (x *ReleaseReservationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseReservationResponse.ProtoReflect.Descriptor instead.
 func (*ReleaseReservationResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{21}
+	return file_agentwallet_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ReleaseReservationResponse) GetMeta() *ResponseMeta {
@@ -1823,7 +3231,7 @@ type GetOperationRequest struct {
 
 func (x *GetOperationRequest) Reset() {
 	*x = GetOperationRequest{}
-	mi := &file_agentwallet_proto_msgTypes[22]
+	mi := &file_agentwallet_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1835,7 +3243,7 @@ func (x *GetOperationRequest) String() string {
 func (*GetOperationRequest) ProtoMessage() {}
 
 func (x *GetOperationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[22]
+	mi := &file_agentwallet_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1848,7 +3256,7 @@ func (x *GetOperationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOperationRequest.ProtoReflect.Descriptor instead.
 func (*GetOperationRequest) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{22}
+	return file_agentwallet_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *GetOperationRequest) GetMeta() *RequestMeta {
@@ -1875,7 +3283,7 @@ type GetOperationResponse struct {
 
 func (x *GetOperationResponse) Reset() {
 	*x = GetOperationResponse{}
-	mi := &file_agentwallet_proto_msgTypes[23]
+	mi := &file_agentwallet_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1887,7 +3295,7 @@ func (x *GetOperationResponse) String() string {
 func (*GetOperationResponse) ProtoMessage() {}
 
 func (x *GetOperationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agentwallet_proto_msgTypes[23]
+	mi := &file_agentwallet_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1900,7 +3308,7 @@ func (x *GetOperationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOperationResponse.ProtoReflect.Descriptor instead.
 func (*GetOperationResponse) Descriptor() ([]byte, []int) {
-	return file_agentwallet_proto_rawDescGZIP(), []int{23}
+	return file_agentwallet_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetOperationResponse) GetMeta() *ResponseMeta {
@@ -1913,6 +3321,150 @@ func (x *GetOperationResponse) GetMeta() *ResponseMeta {
 func (x *GetOperationResponse) GetOperation() *Operation {
 	if x != nil {
 		return x.Operation
+	}
+	return nil
+}
+
+type ListOperationsRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Meta             *RequestMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	WalletId         string                 `protobuf:"bytes,2,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
+	State            string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	Kind             string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	CreatorPrincipal string                 `protobuf:"bytes,5,opt,name=creator_principal,json=creatorPrincipal,proto3" json:"creator_principal,omitempty"`
+	Limit            uint32                 `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
+	NewestFirst      *bool                  `protobuf:"varint,7,opt,name=newest_first,json=newestFirst,proto3,oneof" json:"newest_first,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ListOperationsRequest) Reset() {
+	*x = ListOperationsRequest{}
+	mi := &file_agentwallet_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOperationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOperationsRequest) ProtoMessage() {}
+
+func (x *ListOperationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOperationsRequest.ProtoReflect.Descriptor instead.
+func (*ListOperationsRequest) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ListOperationsRequest) GetMeta() *RequestMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *ListOperationsRequest) GetWalletId() string {
+	if x != nil {
+		return x.WalletId
+	}
+	return ""
+}
+
+func (x *ListOperationsRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ListOperationsRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ListOperationsRequest) GetCreatorPrincipal() string {
+	if x != nil {
+		return x.CreatorPrincipal
+	}
+	return ""
+}
+
+func (x *ListOperationsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListOperationsRequest) GetNewestFirst() bool {
+	if x != nil && x.NewestFirst != nil {
+		return *x.NewestFirst
+	}
+	return false
+}
+
+type ListOperationsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Meta          *ResponseMeta          `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Operations    []*Operation           `protobuf:"bytes,2,rep,name=operations,proto3" json:"operations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOperationsResponse) Reset() {
+	*x = ListOperationsResponse{}
+	mi := &file_agentwallet_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOperationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOperationsResponse) ProtoMessage() {}
+
+func (x *ListOperationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agentwallet_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOperationsResponse.ProtoReflect.Descriptor instead.
+func (*ListOperationsResponse) Descriptor() ([]byte, []int) {
+	return file_agentwallet_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *ListOperationsResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *ListOperationsResponse) GetOperations() []*Operation {
+	if x != nil {
+		return x.Operations
 	}
 	return nil
 }
@@ -1931,7 +3483,15 @@ const file_agentwallet_proto_rawDesc = "" +
 	"\fResponseMeta\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1a\n" +
-	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\x84\x02\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\x95\x02\n" +
+	"\x11SignerBackendInfo\x12\x1d\n" +
+	"\n" +
+	"backend_id\x18\x01 \x01(\tR\tbackendId\x12\x12\n" +
+	"\x04mode\x18\x02 \x01(\tR\x04mode\x126\n" +
+	"\x17local_signing_available\x18\x03 \x01(\bR\x15localSigningAvailable\x12C\n" +
+	"\x1eexternal_signed_psbt_supported\x18\x04 \x01(\bR\x1bexternalSignedPsbtSupported\x12.\n" +
+	"\x13max_active_sessions\x18\x05 \x01(\rR\x11maxActiveSessions\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\"\xce\x02\n" +
 	"\vWalletState\x12\x1b\n" +
 	"\twallet_id\x18\x01 \x01(\tR\bwalletId\x12%\n" +
 	"\x0eactive_network\x18\x02 \x01(\rR\ractiveNetwork\x12\x16\n" +
@@ -1939,7 +3499,8 @@ const file_agentwallet_proto_rawDesc = "" +
 	"\fchain_synced\x18\x04 \x01(\bR\vchainSynced\x12\x16\n" +
 	"\x06locked\x18\x05 \x01(\bR\x06locked\x120\n" +
 	"\x14current_block_height\x18\x06 \x01(\x05R\x12currentBlockHeight\x12,\n" +
-	"\x12current_block_hash\x18\a \x01(\fR\x10currentBlockHash\"e\n" +
+	"\x12current_block_hash\x18\a \x01(\fR\x10currentBlockHash\x12H\n" +
+	"\x0esigner_backend\x18\b \x01(\v2!.agentwalletrpc.SignerBackendInfoR\rsignerBackend\"e\n" +
 	"\x15GetWalletStateRequest\x12/\n" +
 	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12\x1b\n" +
 	"\twallet_id\x18\x02 \x01(\tR\bwalletId\"}\n" +
@@ -2008,7 +3569,49 @@ const file_agentwallet_proto_rawDesc = "" +
 	"\x0etarget_address\x18\b \x01(\tR\rtargetAddress\x12*\n" +
 	"\x11target_amount_sat\x18\t \x01(\x03R\x0ftargetAmountSat\x12,\n" +
 	"\x13fee_rate_sat_per_kb\x18\n" +
-	" \x01(\x03R\x0ffeeRateSatPerKb\"\xfb\x04\n" +
+	" \x01(\x03R\x0ffeeRateSatPerKb\"\xea\x02\n" +
+	"\n" +
+	"Capability\x12#\n" +
+	"\rcapability_id\x18\x01 \x01(\tR\fcapabilityId\x12\x1b\n" +
+	"\twallet_id\x18\x02 \x01(\tR\bwalletId\x12\x1c\n" +
+	"\tprincipal\x18\x03 \x01(\tR\tprincipal\x12 \n" +
+	"\vpermissions\x18\x04 \x03(\tR\vpermissions\x12&\n" +
+	"\x0fcreated_at_unix\x18\x05 \x01(\x03R\rcreatedAtUnix\x12&\n" +
+	"\x0fexpires_at_unix\x18\x06 \x01(\x03R\rexpiresAtUnix\x12\x18\n" +
+	"\arevoked\x18\a \x01(\bR\arevoked\x12&\n" +
+	"\x0frevoked_at_unix\x18\b \x01(\x03R\rrevokedAtUnix\x12+\n" +
+	"\x11revocation_reason\x18\t \x01(\tR\x10revocationReason\x12\x1b\n" +
+	"\tissued_by\x18\n" +
+	" \x01(\tR\bissuedBy\"\xe0\x03\n" +
+	"\rSignerSession\x12*\n" +
+	"\x11signer_session_id\x18\x01 \x01(\tR\x0fsignerSessionId\x12\x1b\n" +
+	"\twallet_id\x18\x02 \x01(\tR\bwalletId\x12#\n" +
+	"\rcapability_id\x18\x03 \x01(\tR\fcapabilityId\x12\x1c\n" +
+	"\tprincipal\x18\x04 \x01(\tR\tprincipal\x12 \n" +
+	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12&\n" +
+	"\x0fcreated_at_unix\x18\x06 \x01(\x03R\rcreatedAtUnix\x12&\n" +
+	"\x0fexpires_at_unix\x18\a \x01(\x03R\rexpiresAtUnix\x12\x16\n" +
+	"\x06closed\x18\b \x01(\bR\x06closed\x12$\n" +
+	"\x0eclosed_at_unix\x18\t \x01(\x03R\fclosedAtUnix\x12!\n" +
+	"\fclose_reason\x18\n" +
+	" \x01(\tR\vcloseReason\x12\x16\n" +
+	"\x06reason\x18\v \x01(\tR\x06reason\x12&\n" +
+	"\x0fopen_request_id\x18\f \x01(\tR\ropenRequestId\x120\n" +
+	"\x14open_idempotency_key\x18\r \x01(\tR\x12openIdempotencyKey\"\xb7\x02\n" +
+	"\x0eOperationEvent\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x16\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\x12\x1d\n" +
+	"\n" +
+	"from_state\x18\x03 \x01(\tR\tfromState\x12\x19\n" +
+	"\bto_state\x18\x04 \x01(\tR\atoState\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x05 \x01(\tR\trequestId\x12\x1c\n" +
+	"\tprincipal\x18\x06 \x01(\tR\tprincipal\x12#\n" +
+	"\rcapability_id\x18\a \x01(\tR\fcapabilityId\x12\x1a\n" +
+	"\bwarnings\x18\b \x03(\tR\bwarnings\x12&\n" +
+	"\x0fcreated_at_unix\x18\t \x01(\x03R\rcreatedAtUnix\x12\x12\n" +
+	"\x04txid\x18\n" +
+	" \x01(\tR\x04txid\"\xcc\x06\n" +
 	"\tOperation\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x14\n" +
@@ -2026,7 +3629,11 @@ const file_agentwallet_proto_rawDesc = "" +
 	"\fexpiry_risks\x18\r \x03(\v2\x1a.agentwalletrpc.ExpiryRiskR\vexpiryRisks\x12G\n" +
 	"\x10effective_policy\x18\x0e \x01(\v2\x1c.agentwalletrpc.ExpiryPolicyR\x0feffectivePolicy\x12+\n" +
 	"\x11min_confirmations\x18\x0f \x01(\x05R\x10minConfirmations\x12\x12\n" +
-	"\x04txid\x18\x10 \x01(\tR\x04txid\"\xe2\x03\n" +
+	"\x04txid\x18\x10 \x01(\tR\x04txid\x12+\n" +
+	"\x11creator_principal\x18\x11 \x01(\tR\x10creatorPrincipal\x122\n" +
+	"\x15creator_capability_id\x18\x12 \x01(\tR\x13creatorCapabilityId\x124\n" +
+	"\x16create_idempotency_key\x18\x13 \x01(\tR\x14createIdempotencyKey\x128\n" +
+	"\ahistory\x18\x14 \x03(\v2\x1e.agentwalletrpc.OperationEventR\ahistory\"\xe2\x03\n" +
 	"\x15PreviewRenewalRequest\x12/\n" +
 	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12\x1b\n" +
 	"\twallet_id\x18\x02 \x01(\tR\bwalletId\x12%\n" +
@@ -2047,11 +3654,86 @@ const file_agentwallet_proto_rawDesc = "" +
 	"\x11unsigned_psbt_b64\x18\x04 \x01(\tR\x0funsignedPsbtB64\x12<\n" +
 	"\asummary\x18\x05 \x01(\v2\".agentwalletrpc.TransactionSummaryR\asummary\x12G\n" +
 	"\x10effective_policy\x18\x06 \x01(\v2\x1c.agentwalletrpc.ExpiryPolicyR\x0feffectivePolicy\x12=\n" +
-	"\fexpiry_risks\x18\a \x03(\v2\x1a.agentwalletrpc.ExpiryRiskR\vexpiryRisks\"\x80\x01\n" +
+	"\fexpiry_risks\x18\a \x03(\v2\x1a.agentwalletrpc.ExpiryRiskR\vexpiryRisks\"\xc7\x01\n" +
+	"\x16IssueCapabilityRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12\x1b\n" +
+	"\twallet_id\x18\x02 \x01(\tR\bwalletId\x12\x1c\n" +
+	"\tprincipal\x18\x03 \x01(\tR\tprincipal\x12 \n" +
+	"\vpermissions\x18\x04 \x03(\tR\vpermissions\x12\x1f\n" +
+	"\vttl_seconds\x18\x05 \x01(\x03R\n" +
+	"ttlSeconds\"\x87\x01\n" +
+	"\x17IssueCapabilityResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x12:\n" +
+	"\n" +
+	"capability\x18\x02 \x01(\v2\x1a.agentwalletrpc.CapabilityR\n" +
+	"capability\"\x87\x01\n" +
+	"\x17RevokeCapabilityRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12#\n" +
+	"\rcapability_id\x18\x02 \x01(\tR\fcapabilityId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x88\x01\n" +
+	"\x18RevokeCapabilityResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x12:\n" +
+	"\n" +
+	"capability\x18\x02 \x01(\v2\x1a.agentwalletrpc.CapabilityR\n" +
+	"capability\"\xe6\x01\n" +
+	"\x18OpenSignerSessionRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12\x1b\n" +
+	"\twallet_id\x18\x02 \x01(\tR\bwalletId\x12#\n" +
+	"\rcapability_id\x18\x03 \x01(\tR\fcapabilityId\x12\x1e\n" +
+	"\n" +
+	"passphrase\x18\x04 \x01(\fR\n" +
+	"passphrase\x12\x1f\n" +
+	"\vttl_seconds\x18\x05 \x01(\x03R\n" +
+	"ttlSeconds\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\"\x86\x01\n" +
+	"\x19OpenSignerSessionResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x127\n" +
+	"\asession\x18\x02 \x01(\v2\x1d.agentwalletrpc.SignerSessionR\asession\"v\n" +
+	"\x17GetSignerSessionRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12*\n" +
+	"\x11signer_session_id\x18\x02 \x01(\tR\x0fsignerSessionId\"\x85\x01\n" +
+	"\x18GetSignerSessionResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x127\n" +
+	"\asession\x18\x02 \x01(\v2\x1d.agentwalletrpc.SignerSessionR\asession\"\x90\x01\n" +
+	"\x19CloseSignerSessionRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12*\n" +
+	"\x11signer_session_id\x18\x02 \x01(\tR\x0fsignerSessionId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x87\x01\n" +
+	"\x1aCloseSignerSessionResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x127\n" +
+	"\asession\x18\x02 \x01(\v2\x1d.agentwalletrpc.SignerSessionR\asession\"\x91\x01\n" +
+	"\x0fSignPsbtRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12!\n" +
+	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12*\n" +
+	"\x11signer_session_id\x18\x03 \x01(\tR\x0fsignerSessionId\"\xb3\x02\n" +
+	"\x10SignPsbtResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x127\n" +
+	"\toperation\x18\x02 \x01(\v2\x19.agentwalletrpc.OperationR\toperation\x12\x1f\n" +
+	"\vsigned_psbt\x18\x03 \x01(\fR\n" +
+	"signedPsbt\x12&\n" +
+	"\x0fsigned_psbt_b64\x18\x04 \x01(\tR\rsignedPsbtB64\x12-\n" +
+	"\x12signed_transaction\x18\x05 \x01(\fR\x11signedTransaction\x12<\n" +
+	"\asummary\x18\x06 \x01(\v2\".agentwalletrpc.TransactionSummaryR\asummary\"\xd2\x01\n" +
+	"\x19PublishTransactionRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12!\n" +
+	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x1f\n" +
+	"\vsigned_psbt\x18\x03 \x01(\fR\n" +
+	"signedPsbt\x12\x14\n" +
+	"\x05label\x18\x04 \x01(\tR\x05label\x12*\n" +
+	"\x11signer_session_id\x18\x05 \x01(\tR\x0fsignerSessionId\"\x8a\x03\n" +
+	"\x1aPublishTransactionResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x127\n" +
+	"\toperation\x18\x02 \x01(\v2\x19.agentwalletrpc.OperationR\toperation\x12\x12\n" +
+	"\x04txid\x18\x03 \x01(\tR\x04txid\x12'\n" +
+	"\x0fraw_transaction\x18\x04 \x01(\fR\x0erawTransaction\x12<\n" +
+	"\asummary\x18\x05 \x01(\v2\".agentwalletrpc.TransactionSummaryR\asummary\x12G\n" +
+	"\x10effective_policy\x18\x06 \x01(\v2\x1c.agentwalletrpc.ExpiryPolicyR\x0feffectivePolicy\x12=\n" +
+	"\fexpiry_risks\x18\a \x03(\v2\x1a.agentwalletrpc.ExpiryRiskR\vexpiryRisks\"\xac\x01\n" +
 	"\x14SubmitRenewalRequest\x12/\n" +
 	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x14\n" +
-	"\x05label\x18\x03 \x01(\tR\x05label\"\x85\x03\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\x12*\n" +
+	"\x11signer_session_id\x18\x04 \x01(\tR\x0fsignerSessionId\"\x85\x03\n" +
 	"\x15SubmitRenewalResponse\x120\n" +
 	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x127\n" +
 	"\toperation\x18\x02 \x01(\v2\x19.agentwalletrpc.OperationR\toperation\x12\x12\n" +
@@ -2085,16 +3767,38 @@ const file_agentwallet_proto_rawDesc = "" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\"\x81\x01\n" +
 	"\x14GetOperationResponse\x120\n" +
 	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x127\n" +
-	"\toperation\x18\x02 \x01(\v2\x19.agentwalletrpc.OperationR\toperation2\x87\x06\n" +
+	"\toperation\x18\x02 \x01(\v2\x19.agentwalletrpc.OperationR\toperation\"\x8b\x02\n" +
+	"\x15ListOperationsRequest\x12/\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1b.agentwalletrpc.RequestMetaR\x04meta\x12\x1b\n" +
+	"\twallet_id\x18\x02 \x01(\tR\bwalletId\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12\x12\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12+\n" +
+	"\x11creator_principal\x18\x05 \x01(\tR\x10creatorPrincipal\x12\x14\n" +
+	"\x05limit\x18\x06 \x01(\rR\x05limit\x12&\n" +
+	"\fnewest_first\x18\a \x01(\bH\x00R\vnewestFirst\x88\x01\x01B\x0f\n" +
+	"\r_newest_first\"\x85\x01\n" +
+	"\x16ListOperationsResponse\x120\n" +
+	"\x04meta\x18\x01 \x01(\v2\x1c.agentwalletrpc.ResponseMetaR\x04meta\x129\n" +
+	"\n" +
+	"operations\x18\x02 \x03(\v2\x19.agentwalletrpc.OperationR\n" +
+	"operations2\xad\f\n" +
 	"\x12AgentWalletService\x12_\n" +
 	"\x0eGetWalletState\x12%.agentwalletrpc.GetWalletStateRequest\x1a&.agentwalletrpc.GetWalletStateResponse\x12P\n" +
 	"\tListUtxos\x12 .agentwalletrpc.ListUtxosRequest\x1a!.agentwalletrpc.ListUtxosResponse\x12\\\n" +
-	"\rGetExpiryRisk\x12$.agentwalletrpc.GetExpiryRiskRequest\x1a%.agentwalletrpc.GetExpiryRiskResponse\x12_\n" +
-	"\x0ePreviewRenewal\x12%.agentwalletrpc.PreviewRenewalRequest\x1a&.agentwalletrpc.PreviewRenewalResponse\x12\\\n" +
+	"\rGetExpiryRisk\x12$.agentwalletrpc.GetExpiryRiskRequest\x1a%.agentwalletrpc.GetExpiryRiskResponse\x12b\n" +
+	"\x0fIssueCapability\x12&.agentwalletrpc.IssueCapabilityRequest\x1a'.agentwalletrpc.IssueCapabilityResponse\x12e\n" +
+	"\x10RevokeCapability\x12'.agentwalletrpc.RevokeCapabilityRequest\x1a(.agentwalletrpc.RevokeCapabilityResponse\x12h\n" +
+	"\x11OpenSignerSession\x12(.agentwalletrpc.OpenSignerSessionRequest\x1a).agentwalletrpc.OpenSignerSessionResponse\x12e\n" +
+	"\x10GetSignerSession\x12'.agentwalletrpc.GetSignerSessionRequest\x1a(.agentwalletrpc.GetSignerSessionResponse\x12k\n" +
+	"\x12CloseSignerSession\x12).agentwalletrpc.CloseSignerSessionRequest\x1a*.agentwalletrpc.CloseSignerSessionResponse\x12_\n" +
+	"\x0ePreviewRenewal\x12%.agentwalletrpc.PreviewRenewalRequest\x1a&.agentwalletrpc.PreviewRenewalResponse\x12M\n" +
+	"\bSignPsbt\x12\x1f.agentwalletrpc.SignPsbtRequest\x1a .agentwalletrpc.SignPsbtResponse\x12k\n" +
+	"\x12PublishTransaction\x12).agentwalletrpc.PublishTransactionRequest\x1a*.agentwalletrpc.PublishTransactionResponse\x12\\\n" +
 	"\rSubmitRenewal\x12$.agentwalletrpc.SubmitRenewalRequest\x1a%.agentwalletrpc.SubmitRenewalResponse\x12Y\n" +
 	"\fReserveUtxos\x12#.agentwalletrpc.ReserveUtxosRequest\x1a$.agentwalletrpc.ReserveUtxosResponse\x12k\n" +
 	"\x12ReleaseReservation\x12).agentwalletrpc.ReleaseReservationRequest\x1a*.agentwalletrpc.ReleaseReservationResponse\x12Y\n" +
-	"\fGetOperation\x12#.agentwalletrpc.GetOperationRequest\x1a$.agentwalletrpc.GetOperationResponseBAZ?github.com/btcsuite/btcwallet/rpc/agentwalletrpc;agentwalletrpcb\x06proto3"
+	"\fGetOperation\x12#.agentwalletrpc.GetOperationRequest\x1a$.agentwalletrpc.GetOperationResponse\x12_\n" +
+	"\x0eListOperations\x12%.agentwalletrpc.ListOperationsRequest\x1a&.agentwalletrpc.ListOperationsResponseBAZ?github.com/btcsuite/btcwallet/rpc/agentwalletrpc;agentwalletrpcb\x06proto3"
 
 var (
 	file_agentwallet_proto_rawDescOnce sync.Once
@@ -2108,89 +3812,155 @@ func file_agentwallet_proto_rawDescGZIP() []byte {
 	return file_agentwallet_proto_rawDescData
 }
 
-var file_agentwallet_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_agentwallet_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_agentwallet_proto_goTypes = []any{
 	(*RequestMeta)(nil),                // 0: agentwalletrpc.RequestMeta
 	(*ResponseMeta)(nil),               // 1: agentwalletrpc.ResponseMeta
-	(*WalletState)(nil),                // 2: agentwalletrpc.WalletState
-	(*GetWalletStateRequest)(nil),      // 3: agentwalletrpc.GetWalletStateRequest
-	(*GetWalletStateResponse)(nil),     // 4: agentwalletrpc.GetWalletStateResponse
-	(*Utxo)(nil),                       // 5: agentwalletrpc.Utxo
-	(*ListUtxosRequest)(nil),           // 6: agentwalletrpc.ListUtxosRequest
-	(*ListUtxosResponse)(nil),          // 7: agentwalletrpc.ListUtxosResponse
-	(*ExpiryPolicy)(nil),               // 8: agentwalletrpc.ExpiryPolicy
-	(*ExpiryRisk)(nil),                 // 9: agentwalletrpc.ExpiryRisk
-	(*GetExpiryRiskRequest)(nil),       // 10: agentwalletrpc.GetExpiryRiskRequest
-	(*GetExpiryRiskResponse)(nil),      // 11: agentwalletrpc.GetExpiryRiskResponse
-	(*TransactionSummary)(nil),         // 12: agentwalletrpc.TransactionSummary
-	(*Operation)(nil),                  // 13: agentwalletrpc.Operation
-	(*PreviewRenewalRequest)(nil),      // 14: agentwalletrpc.PreviewRenewalRequest
-	(*PreviewRenewalResponse)(nil),     // 15: agentwalletrpc.PreviewRenewalResponse
-	(*SubmitRenewalRequest)(nil),       // 16: agentwalletrpc.SubmitRenewalRequest
-	(*SubmitRenewalResponse)(nil),      // 17: agentwalletrpc.SubmitRenewalResponse
-	(*ReserveUtxosRequest)(nil),        // 18: agentwalletrpc.ReserveUtxosRequest
-	(*ReserveUtxosResponse)(nil),       // 19: agentwalletrpc.ReserveUtxosResponse
-	(*ReleaseReservationRequest)(nil),  // 20: agentwalletrpc.ReleaseReservationRequest
-	(*ReleaseReservationResponse)(nil), // 21: agentwalletrpc.ReleaseReservationResponse
-	(*GetOperationRequest)(nil),        // 22: agentwalletrpc.GetOperationRequest
-	(*GetOperationResponse)(nil),       // 23: agentwalletrpc.GetOperationResponse
+	(*SignerBackendInfo)(nil),          // 2: agentwalletrpc.SignerBackendInfo
+	(*WalletState)(nil),                // 3: agentwalletrpc.WalletState
+	(*GetWalletStateRequest)(nil),      // 4: agentwalletrpc.GetWalletStateRequest
+	(*GetWalletStateResponse)(nil),     // 5: agentwalletrpc.GetWalletStateResponse
+	(*Utxo)(nil),                       // 6: agentwalletrpc.Utxo
+	(*ListUtxosRequest)(nil),           // 7: agentwalletrpc.ListUtxosRequest
+	(*ListUtxosResponse)(nil),          // 8: agentwalletrpc.ListUtxosResponse
+	(*ExpiryPolicy)(nil),               // 9: agentwalletrpc.ExpiryPolicy
+	(*ExpiryRisk)(nil),                 // 10: agentwalletrpc.ExpiryRisk
+	(*GetExpiryRiskRequest)(nil),       // 11: agentwalletrpc.GetExpiryRiskRequest
+	(*GetExpiryRiskResponse)(nil),      // 12: agentwalletrpc.GetExpiryRiskResponse
+	(*TransactionSummary)(nil),         // 13: agentwalletrpc.TransactionSummary
+	(*Capability)(nil),                 // 14: agentwalletrpc.Capability
+	(*SignerSession)(nil),              // 15: agentwalletrpc.SignerSession
+	(*OperationEvent)(nil),             // 16: agentwalletrpc.OperationEvent
+	(*Operation)(nil),                  // 17: agentwalletrpc.Operation
+	(*PreviewRenewalRequest)(nil),      // 18: agentwalletrpc.PreviewRenewalRequest
+	(*PreviewRenewalResponse)(nil),     // 19: agentwalletrpc.PreviewRenewalResponse
+	(*IssueCapabilityRequest)(nil),     // 20: agentwalletrpc.IssueCapabilityRequest
+	(*IssueCapabilityResponse)(nil),    // 21: agentwalletrpc.IssueCapabilityResponse
+	(*RevokeCapabilityRequest)(nil),    // 22: agentwalletrpc.RevokeCapabilityRequest
+	(*RevokeCapabilityResponse)(nil),   // 23: agentwalletrpc.RevokeCapabilityResponse
+	(*OpenSignerSessionRequest)(nil),   // 24: agentwalletrpc.OpenSignerSessionRequest
+	(*OpenSignerSessionResponse)(nil),  // 25: agentwalletrpc.OpenSignerSessionResponse
+	(*GetSignerSessionRequest)(nil),    // 26: agentwalletrpc.GetSignerSessionRequest
+	(*GetSignerSessionResponse)(nil),   // 27: agentwalletrpc.GetSignerSessionResponse
+	(*CloseSignerSessionRequest)(nil),  // 28: agentwalletrpc.CloseSignerSessionRequest
+	(*CloseSignerSessionResponse)(nil), // 29: agentwalletrpc.CloseSignerSessionResponse
+	(*SignPsbtRequest)(nil),            // 30: agentwalletrpc.SignPsbtRequest
+	(*SignPsbtResponse)(nil),           // 31: agentwalletrpc.SignPsbtResponse
+	(*PublishTransactionRequest)(nil),  // 32: agentwalletrpc.PublishTransactionRequest
+	(*PublishTransactionResponse)(nil), // 33: agentwalletrpc.PublishTransactionResponse
+	(*SubmitRenewalRequest)(nil),       // 34: agentwalletrpc.SubmitRenewalRequest
+	(*SubmitRenewalResponse)(nil),      // 35: agentwalletrpc.SubmitRenewalResponse
+	(*ReserveUtxosRequest)(nil),        // 36: agentwalletrpc.ReserveUtxosRequest
+	(*ReserveUtxosResponse)(nil),       // 37: agentwalletrpc.ReserveUtxosResponse
+	(*ReleaseReservationRequest)(nil),  // 38: agentwalletrpc.ReleaseReservationRequest
+	(*ReleaseReservationResponse)(nil), // 39: agentwalletrpc.ReleaseReservationResponse
+	(*GetOperationRequest)(nil),        // 40: agentwalletrpc.GetOperationRequest
+	(*GetOperationResponse)(nil),       // 41: agentwalletrpc.GetOperationResponse
+	(*ListOperationsRequest)(nil),      // 42: agentwalletrpc.ListOperationsRequest
+	(*ListOperationsResponse)(nil),     // 43: agentwalletrpc.ListOperationsResponse
 }
 var file_agentwallet_proto_depIdxs = []int32{
-	0,  // 0: agentwalletrpc.GetWalletStateRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	1,  // 1: agentwalletrpc.GetWalletStateResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	2,  // 2: agentwalletrpc.GetWalletStateResponse.state:type_name -> agentwalletrpc.WalletState
-	0,  // 3: agentwalletrpc.ListUtxosRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	1,  // 4: agentwalletrpc.ListUtxosResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	5,  // 5: agentwalletrpc.ListUtxosResponse.utxos:type_name -> agentwalletrpc.Utxo
-	0,  // 6: agentwalletrpc.GetExpiryRiskRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	8,  // 7: agentwalletrpc.GetExpiryRiskRequest.policy:type_name -> agentwalletrpc.ExpiryPolicy
-	1,  // 8: agentwalletrpc.GetExpiryRiskResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	8,  // 9: agentwalletrpc.GetExpiryRiskResponse.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
-	9,  // 10: agentwalletrpc.GetExpiryRiskResponse.items:type_name -> agentwalletrpc.ExpiryRisk
-	12, // 11: agentwalletrpc.Operation.summary:type_name -> agentwalletrpc.TransactionSummary
-	9,  // 12: agentwalletrpc.Operation.expiry_risks:type_name -> agentwalletrpc.ExpiryRisk
-	8,  // 13: agentwalletrpc.Operation.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
-	0,  // 14: agentwalletrpc.PreviewRenewalRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	8,  // 15: agentwalletrpc.PreviewRenewalRequest.expiry_policy:type_name -> agentwalletrpc.ExpiryPolicy
-	1,  // 16: agentwalletrpc.PreviewRenewalResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	13, // 17: agentwalletrpc.PreviewRenewalResponse.operation:type_name -> agentwalletrpc.Operation
-	12, // 18: agentwalletrpc.PreviewRenewalResponse.summary:type_name -> agentwalletrpc.TransactionSummary
-	8,  // 19: agentwalletrpc.PreviewRenewalResponse.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
-	9,  // 20: agentwalletrpc.PreviewRenewalResponse.expiry_risks:type_name -> agentwalletrpc.ExpiryRisk
-	0,  // 21: agentwalletrpc.SubmitRenewalRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	1,  // 22: agentwalletrpc.SubmitRenewalResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	13, // 23: agentwalletrpc.SubmitRenewalResponse.operation:type_name -> agentwalletrpc.Operation
-	12, // 24: agentwalletrpc.SubmitRenewalResponse.summary:type_name -> agentwalletrpc.TransactionSummary
-	8,  // 25: agentwalletrpc.SubmitRenewalResponse.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
-	9,  // 26: agentwalletrpc.SubmitRenewalResponse.expiry_risks:type_name -> agentwalletrpc.ExpiryRisk
-	0,  // 27: agentwalletrpc.ReserveUtxosRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	1,  // 28: agentwalletrpc.ReserveUtxosResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	0,  // 29: agentwalletrpc.ReleaseReservationRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	1,  // 30: agentwalletrpc.ReleaseReservationResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	0,  // 31: agentwalletrpc.GetOperationRequest.meta:type_name -> agentwalletrpc.RequestMeta
-	1,  // 32: agentwalletrpc.GetOperationResponse.meta:type_name -> agentwalletrpc.ResponseMeta
-	13, // 33: agentwalletrpc.GetOperationResponse.operation:type_name -> agentwalletrpc.Operation
-	3,  // 34: agentwalletrpc.AgentWalletService.GetWalletState:input_type -> agentwalletrpc.GetWalletStateRequest
-	6,  // 35: agentwalletrpc.AgentWalletService.ListUtxos:input_type -> agentwalletrpc.ListUtxosRequest
-	10, // 36: agentwalletrpc.AgentWalletService.GetExpiryRisk:input_type -> agentwalletrpc.GetExpiryRiskRequest
-	14, // 37: agentwalletrpc.AgentWalletService.PreviewRenewal:input_type -> agentwalletrpc.PreviewRenewalRequest
-	16, // 38: agentwalletrpc.AgentWalletService.SubmitRenewal:input_type -> agentwalletrpc.SubmitRenewalRequest
-	18, // 39: agentwalletrpc.AgentWalletService.ReserveUtxos:input_type -> agentwalletrpc.ReserveUtxosRequest
-	20, // 40: agentwalletrpc.AgentWalletService.ReleaseReservation:input_type -> agentwalletrpc.ReleaseReservationRequest
-	22, // 41: agentwalletrpc.AgentWalletService.GetOperation:input_type -> agentwalletrpc.GetOperationRequest
-	4,  // 42: agentwalletrpc.AgentWalletService.GetWalletState:output_type -> agentwalletrpc.GetWalletStateResponse
-	7,  // 43: agentwalletrpc.AgentWalletService.ListUtxos:output_type -> agentwalletrpc.ListUtxosResponse
-	11, // 44: agentwalletrpc.AgentWalletService.GetExpiryRisk:output_type -> agentwalletrpc.GetExpiryRiskResponse
-	15, // 45: agentwalletrpc.AgentWalletService.PreviewRenewal:output_type -> agentwalletrpc.PreviewRenewalResponse
-	17, // 46: agentwalletrpc.AgentWalletService.SubmitRenewal:output_type -> agentwalletrpc.SubmitRenewalResponse
-	19, // 47: agentwalletrpc.AgentWalletService.ReserveUtxos:output_type -> agentwalletrpc.ReserveUtxosResponse
-	21, // 48: agentwalletrpc.AgentWalletService.ReleaseReservation:output_type -> agentwalletrpc.ReleaseReservationResponse
-	23, // 49: agentwalletrpc.AgentWalletService.GetOperation:output_type -> agentwalletrpc.GetOperationResponse
-	42, // [42:50] is the sub-list for method output_type
-	34, // [34:42] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	2,  // 0: agentwalletrpc.WalletState.signer_backend:type_name -> agentwalletrpc.SignerBackendInfo
+	0,  // 1: agentwalletrpc.GetWalletStateRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 2: agentwalletrpc.GetWalletStateResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	3,  // 3: agentwalletrpc.GetWalletStateResponse.state:type_name -> agentwalletrpc.WalletState
+	0,  // 4: agentwalletrpc.ListUtxosRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 5: agentwalletrpc.ListUtxosResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	6,  // 6: agentwalletrpc.ListUtxosResponse.utxos:type_name -> agentwalletrpc.Utxo
+	0,  // 7: agentwalletrpc.GetExpiryRiskRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	9,  // 8: agentwalletrpc.GetExpiryRiskRequest.policy:type_name -> agentwalletrpc.ExpiryPolicy
+	1,  // 9: agentwalletrpc.GetExpiryRiskResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	9,  // 10: agentwalletrpc.GetExpiryRiskResponse.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
+	10, // 11: agentwalletrpc.GetExpiryRiskResponse.items:type_name -> agentwalletrpc.ExpiryRisk
+	13, // 12: agentwalletrpc.Operation.summary:type_name -> agentwalletrpc.TransactionSummary
+	10, // 13: agentwalletrpc.Operation.expiry_risks:type_name -> agentwalletrpc.ExpiryRisk
+	9,  // 14: agentwalletrpc.Operation.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
+	16, // 15: agentwalletrpc.Operation.history:type_name -> agentwalletrpc.OperationEvent
+	0,  // 16: agentwalletrpc.PreviewRenewalRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	9,  // 17: agentwalletrpc.PreviewRenewalRequest.expiry_policy:type_name -> agentwalletrpc.ExpiryPolicy
+	1,  // 18: agentwalletrpc.PreviewRenewalResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	17, // 19: agentwalletrpc.PreviewRenewalResponse.operation:type_name -> agentwalletrpc.Operation
+	13, // 20: agentwalletrpc.PreviewRenewalResponse.summary:type_name -> agentwalletrpc.TransactionSummary
+	9,  // 21: agentwalletrpc.PreviewRenewalResponse.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
+	10, // 22: agentwalletrpc.PreviewRenewalResponse.expiry_risks:type_name -> agentwalletrpc.ExpiryRisk
+	0,  // 23: agentwalletrpc.IssueCapabilityRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 24: agentwalletrpc.IssueCapabilityResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	14, // 25: agentwalletrpc.IssueCapabilityResponse.capability:type_name -> agentwalletrpc.Capability
+	0,  // 26: agentwalletrpc.RevokeCapabilityRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 27: agentwalletrpc.RevokeCapabilityResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	14, // 28: agentwalletrpc.RevokeCapabilityResponse.capability:type_name -> agentwalletrpc.Capability
+	0,  // 29: agentwalletrpc.OpenSignerSessionRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 30: agentwalletrpc.OpenSignerSessionResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	15, // 31: agentwalletrpc.OpenSignerSessionResponse.session:type_name -> agentwalletrpc.SignerSession
+	0,  // 32: agentwalletrpc.GetSignerSessionRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 33: agentwalletrpc.GetSignerSessionResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	15, // 34: agentwalletrpc.GetSignerSessionResponse.session:type_name -> agentwalletrpc.SignerSession
+	0,  // 35: agentwalletrpc.CloseSignerSessionRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 36: agentwalletrpc.CloseSignerSessionResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	15, // 37: agentwalletrpc.CloseSignerSessionResponse.session:type_name -> agentwalletrpc.SignerSession
+	0,  // 38: agentwalletrpc.SignPsbtRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 39: agentwalletrpc.SignPsbtResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	17, // 40: agentwalletrpc.SignPsbtResponse.operation:type_name -> agentwalletrpc.Operation
+	13, // 41: agentwalletrpc.SignPsbtResponse.summary:type_name -> agentwalletrpc.TransactionSummary
+	0,  // 42: agentwalletrpc.PublishTransactionRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 43: agentwalletrpc.PublishTransactionResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	17, // 44: agentwalletrpc.PublishTransactionResponse.operation:type_name -> agentwalletrpc.Operation
+	13, // 45: agentwalletrpc.PublishTransactionResponse.summary:type_name -> agentwalletrpc.TransactionSummary
+	9,  // 46: agentwalletrpc.PublishTransactionResponse.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
+	10, // 47: agentwalletrpc.PublishTransactionResponse.expiry_risks:type_name -> agentwalletrpc.ExpiryRisk
+	0,  // 48: agentwalletrpc.SubmitRenewalRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 49: agentwalletrpc.SubmitRenewalResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	17, // 50: agentwalletrpc.SubmitRenewalResponse.operation:type_name -> agentwalletrpc.Operation
+	13, // 51: agentwalletrpc.SubmitRenewalResponse.summary:type_name -> agentwalletrpc.TransactionSummary
+	9,  // 52: agentwalletrpc.SubmitRenewalResponse.effective_policy:type_name -> agentwalletrpc.ExpiryPolicy
+	10, // 53: agentwalletrpc.SubmitRenewalResponse.expiry_risks:type_name -> agentwalletrpc.ExpiryRisk
+	0,  // 54: agentwalletrpc.ReserveUtxosRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 55: agentwalletrpc.ReserveUtxosResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	0,  // 56: agentwalletrpc.ReleaseReservationRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 57: agentwalletrpc.ReleaseReservationResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	0,  // 58: agentwalletrpc.GetOperationRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 59: agentwalletrpc.GetOperationResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	17, // 60: agentwalletrpc.GetOperationResponse.operation:type_name -> agentwalletrpc.Operation
+	0,  // 61: agentwalletrpc.ListOperationsRequest.meta:type_name -> agentwalletrpc.RequestMeta
+	1,  // 62: agentwalletrpc.ListOperationsResponse.meta:type_name -> agentwalletrpc.ResponseMeta
+	17, // 63: agentwalletrpc.ListOperationsResponse.operations:type_name -> agentwalletrpc.Operation
+	4,  // 64: agentwalletrpc.AgentWalletService.GetWalletState:input_type -> agentwalletrpc.GetWalletStateRequest
+	7,  // 65: agentwalletrpc.AgentWalletService.ListUtxos:input_type -> agentwalletrpc.ListUtxosRequest
+	11, // 66: agentwalletrpc.AgentWalletService.GetExpiryRisk:input_type -> agentwalletrpc.GetExpiryRiskRequest
+	20, // 67: agentwalletrpc.AgentWalletService.IssueCapability:input_type -> agentwalletrpc.IssueCapabilityRequest
+	22, // 68: agentwalletrpc.AgentWalletService.RevokeCapability:input_type -> agentwalletrpc.RevokeCapabilityRequest
+	24, // 69: agentwalletrpc.AgentWalletService.OpenSignerSession:input_type -> agentwalletrpc.OpenSignerSessionRequest
+	26, // 70: agentwalletrpc.AgentWalletService.GetSignerSession:input_type -> agentwalletrpc.GetSignerSessionRequest
+	28, // 71: agentwalletrpc.AgentWalletService.CloseSignerSession:input_type -> agentwalletrpc.CloseSignerSessionRequest
+	18, // 72: agentwalletrpc.AgentWalletService.PreviewRenewal:input_type -> agentwalletrpc.PreviewRenewalRequest
+	30, // 73: agentwalletrpc.AgentWalletService.SignPsbt:input_type -> agentwalletrpc.SignPsbtRequest
+	32, // 74: agentwalletrpc.AgentWalletService.PublishTransaction:input_type -> agentwalletrpc.PublishTransactionRequest
+	34, // 75: agentwalletrpc.AgentWalletService.SubmitRenewal:input_type -> agentwalletrpc.SubmitRenewalRequest
+	36, // 76: agentwalletrpc.AgentWalletService.ReserveUtxos:input_type -> agentwalletrpc.ReserveUtxosRequest
+	38, // 77: agentwalletrpc.AgentWalletService.ReleaseReservation:input_type -> agentwalletrpc.ReleaseReservationRequest
+	40, // 78: agentwalletrpc.AgentWalletService.GetOperation:input_type -> agentwalletrpc.GetOperationRequest
+	42, // 79: agentwalletrpc.AgentWalletService.ListOperations:input_type -> agentwalletrpc.ListOperationsRequest
+	5,  // 80: agentwalletrpc.AgentWalletService.GetWalletState:output_type -> agentwalletrpc.GetWalletStateResponse
+	8,  // 81: agentwalletrpc.AgentWalletService.ListUtxos:output_type -> agentwalletrpc.ListUtxosResponse
+	12, // 82: agentwalletrpc.AgentWalletService.GetExpiryRisk:output_type -> agentwalletrpc.GetExpiryRiskResponse
+	21, // 83: agentwalletrpc.AgentWalletService.IssueCapability:output_type -> agentwalletrpc.IssueCapabilityResponse
+	23, // 84: agentwalletrpc.AgentWalletService.RevokeCapability:output_type -> agentwalletrpc.RevokeCapabilityResponse
+	25, // 85: agentwalletrpc.AgentWalletService.OpenSignerSession:output_type -> agentwalletrpc.OpenSignerSessionResponse
+	27, // 86: agentwalletrpc.AgentWalletService.GetSignerSession:output_type -> agentwalletrpc.GetSignerSessionResponse
+	29, // 87: agentwalletrpc.AgentWalletService.CloseSignerSession:output_type -> agentwalletrpc.CloseSignerSessionResponse
+	19, // 88: agentwalletrpc.AgentWalletService.PreviewRenewal:output_type -> agentwalletrpc.PreviewRenewalResponse
+	31, // 89: agentwalletrpc.AgentWalletService.SignPsbt:output_type -> agentwalletrpc.SignPsbtResponse
+	33, // 90: agentwalletrpc.AgentWalletService.PublishTransaction:output_type -> agentwalletrpc.PublishTransactionResponse
+	35, // 91: agentwalletrpc.AgentWalletService.SubmitRenewal:output_type -> agentwalletrpc.SubmitRenewalResponse
+	37, // 92: agentwalletrpc.AgentWalletService.ReserveUtxos:output_type -> agentwalletrpc.ReserveUtxosResponse
+	39, // 93: agentwalletrpc.AgentWalletService.ReleaseReservation:output_type -> agentwalletrpc.ReleaseReservationResponse
+	41, // 94: agentwalletrpc.AgentWalletService.GetOperation:output_type -> agentwalletrpc.GetOperationResponse
+	43, // 95: agentwalletrpc.AgentWalletService.ListOperations:output_type -> agentwalletrpc.ListOperationsResponse
+	80, // [80:96] is the sub-list for method output_type
+	64, // [64:80] is the sub-list for method input_type
+	64, // [64:64] is the sub-list for extension type_name
+	64, // [64:64] is the sub-list for extension extendee
+	0,  // [0:64] is the sub-list for field type_name
 }
 
 func init() { file_agentwallet_proto_init() }
@@ -2198,13 +3968,14 @@ func file_agentwallet_proto_init() {
 	if File_agentwallet_proto != nil {
 		return
 	}
+	file_agentwallet_proto_msgTypes[42].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agentwallet_proto_rawDesc), len(file_agentwallet_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

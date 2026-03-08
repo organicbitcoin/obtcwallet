@@ -32,13 +32,21 @@ const (
 	defaultAgentWalletID               = "default"
 	defaultReservationTTLSeconds int64 = 300
 	defaultExpiryResultLimit           = 100
+	defaultListOperationsLimit         = 100
 
 	operationKindRenewPreview = "renewal_preview"
+	operationKindRenewSign    = "renewal_sign"
+	operationKindRenewPublish = "renewal_publish"
 	operationKindRenewSubmit  = "renewal_submit"
 	operationStateDraft       = "DRAFT"
+	operationStateSigned      = "SIGNED"
 	operationStatePublished   = "PUBLISHED"
 
 	expiryPolicySourceRequestOverride = "request_override"
+
+	operationActionPreviewCreated = "preview_created"
+	operationActionPsbtSigned     = "psbt_signed"
+	operationActionTxPublished    = "transaction_published"
 )
 
 // AgentExpiryPolicyProvider resolves the effective expiry policy used by the
@@ -51,6 +59,7 @@ type AgentExpiryPolicyProvider interface {
 // AgentWalletOptions configures the agent-oriented gRPC service.
 type AgentWalletOptions struct {
 	ExpiryPolicyProvider AgentExpiryPolicyProvider
+	SignerBackend        AgentSignerBackend
 }
 
 type agentExpiryPolicy struct {
@@ -81,11 +90,22 @@ type agentWalletServer struct {
 
 	wallet               *wallet.Wallet
 	expiryPolicyProvider AgentExpiryPolicyProvider
+	signerBackend        AgentSignerBackend
+	persistence          *agentWalletPersistentStore
 
-	mu                sync.Mutex
-	nextOperationID   uint64
-	nextReservationID uint64
-	operations        map[string]*pb.Operation
+	mu                  sync.Mutex
+	nextOperationID     uint64
+	nextReservationID   uint64
+	nextEventID         uint64
+	nextCapabilityID    uint64
+	nextSignerSessionID uint64
+	operations          map[string]*pb.Operation
+	artifacts           map[string]*agentOperationArtifacts
+	reservations        map[string]*agentReservationRecord
+	capabilities        map[string]*agentCapabilityRecord
+	signerSessions      map[string]*agentSignerSessionRecord
+	persistenceLoadOnce sync.Once
+	persistenceLoadErr  error
 }
 
 // StartAgentWalletService registers the phase-1 AgentWalletService on the
@@ -103,11 +123,24 @@ func StartAgentWalletServiceWithOptions(server *grpc.Server,
 	if opts.ExpiryPolicyProvider == nil {
 		opts.ExpiryPolicyProvider = compatibilityExpiryPolicyProvider{}
 	}
+	if opts.SignerBackend == nil {
+		if wallet.Manager.WatchOnly() {
+			opts.SignerBackend = newPublishOnlyAgentSignerBackend()
+		} else {
+			opts.SignerBackend = newLocalAgentSignerBackend(wallet)
+		}
+	}
 
 	service := &agentWalletServer{
 		wallet:               wallet,
 		expiryPolicyProvider: opts.ExpiryPolicyProvider,
+		signerBackend:        opts.SignerBackend,
+		persistence:          newAgentWalletPersistentStore(wallet.Database()),
 		operations:           make(map[string]*pb.Operation),
+		artifacts:            make(map[string]*agentOperationArtifacts),
+		reservations:         make(map[string]*agentReservationRecord),
+		capabilities:         make(map[string]*agentCapabilityRecord),
+		signerSessions:       make(map[string]*agentSignerSessionRecord),
 	}
 	pb.RegisterAgentWalletServiceServer(server, service)
 }
@@ -128,6 +161,7 @@ func (s *agentWalletServer) GetWalletState(_ context.Context,
 			Locked:             s.wallet.Locked(),
 			CurrentBlockHeight: syncedTo.Height,
 			CurrentBlockHash:   syncedTo.Hash[:],
+			SignerBackend:      s.signerBackend.Info(),
 		},
 	}, nil
 }
@@ -233,6 +267,9 @@ func (s *agentWalletServer) GetExpiryRisk(_ context.Context,
 func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 	req *pb.PreviewRenewalRequest) (*pb.PreviewRenewalResponse, error) {
 
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
 	if err := validateAccountAndMinConfs(
 		req.AccountNumber, req.MinConfirmations,
 	); err != nil {
@@ -372,10 +409,36 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 		EffectivePolicy: toPBExpiryPolicy(
 			effectivePolicy,
 		),
-		MinConfirmations: req.MinConfirmations,
+		MinConfirmations:     req.MinConfirmations,
+		CreatorPrincipal:     req.GetMeta().GetPrincipal(),
+		CreatorCapabilityId:  req.GetMeta().GetCapabilityId(),
+		CreateIdempotencyKey: req.GetMeta().GetIdempotencyKey(),
+		History: []*pb.OperationEvent{
+			s.newOperationEventLocked(
+				req.GetMeta(),
+				operationActionPreviewCreated,
+				"",
+				operationStateDraft,
+				warnings,
+				"",
+				now,
+			),
+		},
 	}
-	s.operations[operationID] = op
+	artifacts := &agentOperationArtifacts{
+		OperationID:  operationID,
+		UnsignedPsbt: append([]byte(nil), rawPSBT...),
+	}
+	persistErr := s.persistence.putOperationBundle(op, artifacts)
+	if persistErr == nil {
+		s.operations[operationID] = cloneOperation(op)
+		s.artifacts[operationID] = cloneOperationArtifacts(artifacts)
+	}
 	s.mu.Unlock()
+	if persistErr != nil {
+		return nil, status.Errorf(codes.Internal,
+			"failed to persist renewal operation: %v", persistErr)
+	}
 
 	return &pb.PreviewRenewalResponse{
 		Meta: &pb.ResponseMeta{
@@ -391,189 +454,116 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 	}, nil
 }
 
-func (s *agentWalletServer) SubmitRenewal(_ context.Context,
-	req *pb.SubmitRenewalRequest) (*pb.SubmitRenewalResponse, error) {
+func (s *agentWalletServer) SignPsbt(_ context.Context,
+	req *pb.SignPsbtRequest) (*pb.SignPsbtResponse, error) {
 
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
 	if req.OperationId == "" {
 		return nil, status.Error(codes.InvalidArgument,
 			"operation_id must not be empty")
 	}
 
-	s.mu.Lock()
-	existingOp, ok := s.operations[req.OperationId]
-	if !ok {
-		s.mu.Unlock()
-		return nil, status.Errorf(codes.NotFound,
-			"operation %s not found", req.OperationId)
-	}
-	op := cloneOperation(existingOp)
-	s.mu.Unlock()
-
-	switch op.Kind {
-	case operationKindRenewPreview, operationKindRenewSubmit:
-	default:
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"operation %s is not a renewal operation", req.OperationId)
-	}
-
-	if op.Summary == nil {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"operation %s is missing renewal summary", req.OperationId)
-	}
-	if op.State == operationStatePublished {
-		warnings := []string{
-			"operation already published; returning recorded transaction metadata",
-		}
-		return &pb.SubmitRenewalResponse{
-			Meta: &pb.ResponseMeta{
-				RequestId: requestID(req.GetMeta()),
-				Warnings:  warnings,
-			},
-			Operation:       cloneOperation(op),
-			Txid:            op.Txid,
-			Summary:         cloneSummary(op.Summary),
-			EffectivePolicy: cloneExpiryPolicy(op.EffectivePolicy),
-			ExpiryRisks:     cloneExpiryRisks(op.ExpiryRisks),
-		}, nil
-	}
-	if op.State != operationStateDraft {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"operation %s is in unsupported state %s",
-			req.OperationId, op.State)
-	}
-	if len(op.Outpoints) == 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"operation %s has no selected outpoints", req.OperationId)
-	}
-	if op.Summary.TargetAmountSat <= 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"operation %s has invalid target amount", req.OperationId)
-	}
-	if s.wallet.Manager.WatchOnly() {
-		return nil, status.Error(codes.FailedPrecondition,
-			"wallet is watch-only; use PreviewRenewal and an external signing flow")
-	}
-
-	selectedOutputs, err := s.lookupOutputs(
-		op.AccountNumber, op.MinConfirmations, op.Outpoints,
+	op, artifacts, warnings, err := s.signRenewalOperation(
+		req.OperationId, operationKindRenewSign, req.GetMeta(),
+		req.GetSignerSessionId(), capabilityPermissionRenewalSign,
+		capabilityPermissionRenewalSubmit,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	selectedOutpoints := make([]wire.OutPoint, 0, len(selectedOutputs))
-	for _, output := range selectedOutputs {
-		selectedOutpoints = append(selectedOutpoints, output.OutPoint)
+	signedPsbtB64, err := psbtB64FromBytes(artifacts.SignedPsbt)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal,
+			"failed to encode signed PSBT: %v", err)
 	}
 
-	if err := s.validateRequestedReservation(
-		selectedOutpoints, op.ReservationId,
-	); err != nil {
+	return &pb.SignPsbtResponse{
+		Meta: &pb.ResponseMeta{
+			RequestId: requestID(req.GetMeta()),
+			Warnings:  warnings,
+		},
+		Operation:         cloneOperation(op),
+		SignedPsbt:        append([]byte(nil), artifacts.SignedPsbt...),
+		SignedPsbtB64:     signedPsbtB64,
+		SignedTransaction: append([]byte(nil), artifacts.SignedTransaction...),
+		Summary:           cloneSummary(op.Summary),
+	}, nil
+}
+
+func (s *agentWalletServer) PublishTransaction(_ context.Context,
+	req *pb.PublishTransactionRequest) (*pb.PublishTransactionResponse, error) {
+
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
+	if req.OperationId == "" {
+		return nil, status.Error(codes.InvalidArgument,
+			"operation_id must not be empty")
+	}
+
+	op, artifacts, warnings, err := s.publishRenewalOperation(
+		req.OperationId, req.SignedPsbt, req.Label,
+		operationKindRenewPublish, "agentwallet.publish_transaction",
+		req.GetMeta(), req.GetSignerSessionId(),
+		capabilityPermissionRenewalPublish, capabilityPermissionRenewalSubmit,
+	)
+	if err != nil {
 		return nil, err
 	}
 
-	targetAddress := op.Summary.TargetAddress
-	if targetAddress == "" {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"operation %s is missing target address", req.OperationId)
+	return &pb.PublishTransactionResponse{
+		Meta: &pb.ResponseMeta{
+			RequestId: requestID(req.GetMeta()),
+			Warnings:  warnings,
+		},
+		Operation:       cloneOperation(op),
+		Txid:            op.Txid,
+		RawTransaction:  append([]byte(nil), artifacts.SignedTransaction...),
+		Summary:         cloneSummary(op.Summary),
+		EffectivePolicy: cloneExpiryPolicy(op.EffectivePolicy),
+		ExpiryRisks:     cloneExpiryRisks(op.ExpiryRisks),
+	}, nil
+}
+
+func (s *agentWalletServer) SubmitRenewal(_ context.Context,
+	req *pb.SubmitRenewalRequest) (*pb.SubmitRenewalResponse, error) {
+
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
+	if req.OperationId == "" {
+		return nil, status.Error(codes.InvalidArgument,
+			"operation_id must not be empty")
 	}
 
-	targetAddr, err := decodeAddress(targetAddress, s.wallet.ChainParams())
-	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"operation %s has invalid target address: %v",
-			req.OperationId, err)
-	}
-
-	pkScript, err := txscript.PayToAddrScript(targetAddr)
-	if err != nil {
-		return nil, translateError(err)
-	}
-
-	effectivePolicy, warnings, err := s.resolveSubmitExpiryPolicy(op)
+	signWarnings := []string(nil)
+	op, _, err := s.loadRenewalOperation(req.OperationId)
 	if err != nil {
 		return nil, err
 	}
-
-	tipHeight := s.wallet.SyncedTo().Height
-	expiryRisks, err := buildExpiryRiskItems(
-		selectedOutputs, tipHeight, effectivePolicy, len(selectedOutputs), nil,
-	)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal,
-			"failed to analyze renewal expiry risk: %v", err)
-	}
-	warnings = append(warnings, warningsFromExpiryRisks(expiryRisks)...)
-
-	feeRate := txrules.DefaultRelayFeePerKb
-	if op.Summary.FeeRateSatPerKb > 0 {
-		feeRate = btcutil.Amount(op.Summary.FeeRateSatPerKb)
-	}
-
-	label := req.Label
-	if label == "" {
-		label = "agentwallet.submit_renewal"
-	}
-
-	tx, err := s.wallet.SendOutputsWithInput(
-		[]*wire.TxOut{{
-			Value:    op.Summary.TargetAmountSat,
-			PkScript: pkScript,
-		}},
-		nil, // Allow selected outpoints from any key scope in the account.
-		op.AccountNumber,
-		op.MinConfirmations,
-		feeRate,
-		wallet.CoinSelectionLargest,
-		label,
-		selectedOutpoints,
-	)
-	if err != nil {
-		return nil, translateError(err)
-	}
-
-	summary, err := summarizePublishedTransaction(
-		tx, selectedOutputs, pkScript, targetAddress,
-		op.Summary.TargetAmountSat, int64(feeRate),
-	)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal,
-			"failed to summarize published renewal transaction: %v", err)
-	}
-
-	rawTx, err := serializeTransaction(tx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal,
-			"failed to serialize published renewal transaction: %v", err)
-	}
-
-	if op.ReservationId != "" {
-		if releaseErr := releaseLeasedOutpoints(
-			s.wallet, reservationLockID(op.ReservationId), selectedOutpoints,
-		); releaseErr != nil {
-			warnings = append(warnings, fmt.Sprintf(
-				"transaction published but reservation release failed: %v",
-				releaseErr,
-			))
+	if op.State == operationStateDraft {
+		_, _, signWarnings, err = s.signRenewalOperation(
+			req.OperationId, operationKindRenewSubmit, req.GetMeta(),
+			req.GetSignerSessionId(), capabilityPermissionRenewalSubmit,
+		)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	now := time.Now().Unix()
-	auditWarnings := mergeWarnings(op.Warnings, warnings)
-	op.Kind = operationKindRenewSubmit
-	op.State = operationStatePublished
-	op.PolicyVerdict = policyVerdictFromExpiryRisks(expiryRisks)
-	op.Warnings = auditWarnings
-	op.UpdatedAtUnix = now
-	op.Summary = cloneSummary(summary)
-	op.ExpiryRisks = cloneExpiryRisks(expiryRisks)
-	op.EffectivePolicy = toPBExpiryPolicy(effectivePolicy)
-	op.Txid = tx.TxHash().String()
+	op, artifacts, publishWarnings, err := s.publishRenewalOperation(
+		req.OperationId, nil, req.Label, operationKindRenewSubmit,
+		"agentwallet.submit_renewal", req.GetMeta(),
+		req.GetSignerSessionId(), capabilityPermissionRenewalSubmit,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-	s.mu.Lock()
-	s.operations[req.OperationId] = cloneOperation(op)
-	s.mu.Unlock()
-
+	warnings := mergeWarnings(signWarnings, publishWarnings)
 	return &pb.SubmitRenewalResponse{
 		Meta: &pb.ResponseMeta{
 			RequestId: requestID(req.GetMeta()),
@@ -581,16 +571,19 @@ func (s *agentWalletServer) SubmitRenewal(_ context.Context,
 		},
 		Operation:       cloneOperation(op),
 		Txid:            op.Txid,
-		RawTransaction:  rawTx,
-		Summary:         cloneSummary(summary),
-		EffectivePolicy: toPBExpiryPolicy(effectivePolicy),
-		ExpiryRisks:     cloneExpiryRisks(expiryRisks),
+		RawTransaction:  append([]byte(nil), artifacts.SignedTransaction...),
+		Summary:         cloneSummary(op.Summary),
+		EffectivePolicy: cloneExpiryPolicy(op.EffectivePolicy),
+		ExpiryRisks:     cloneExpiryRisks(op.ExpiryRisks),
 	}, nil
 }
 
 func (s *agentWalletServer) ReserveUtxos(_ context.Context,
 	req *pb.ReserveUtxosRequest) (*pb.ReserveUtxosResponse, error) {
 
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
 	if err := validateAccountAndMinConfs(
 		req.AccountNumber, req.MinConfirmations,
 	); err != nil {
@@ -636,6 +629,31 @@ func (s *agentWalletServer) ReserveUtxos(_ context.Context,
 		acquired = append(acquired, output.OutPoint)
 	}
 
+	now := time.Now().Unix()
+	record := &agentReservationRecord{
+		ReservationID: reservationID,
+		WalletID:      normalizeWalletID(req.GetWalletId()),
+		AccountNumber: req.AccountNumber,
+		Outpoints:     outpointStrings(acquired),
+		ExpiresAtUnix: expiresAt.Unix(),
+		CreatedAtUnix: now,
+		UpdatedAtUnix: now,
+	}
+	if err := s.persistence.putReservation(record); err != nil {
+		releaseErr := releaseLeasedOutpoints(s.wallet, lockID, acquired)
+		if releaseErr != nil {
+			return nil, status.Errorf(codes.Internal,
+				"reservation metadata persistence failed: %v (rollback failed: %v)",
+				err, releaseErr)
+		}
+		return nil, status.Errorf(codes.Internal,
+			"failed to persist reservation metadata: %v", err)
+	}
+
+	s.mu.Lock()
+	s.reservations[reservationID] = cloneReservationRecord(record)
+	s.mu.Unlock()
+
 	return &pb.ReserveUtxosResponse{
 		Meta: &pb.ResponseMeta{
 			RequestId: requestID(req.GetMeta()),
@@ -649,6 +667,9 @@ func (s *agentWalletServer) ReserveUtxos(_ context.Context,
 func (s *agentWalletServer) ReleaseReservation(_ context.Context,
 	req *pb.ReleaseReservationRequest) (*pb.ReleaseReservationResponse, error) {
 
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
 	if req.ReservationId == "" {
 		return nil, status.Error(codes.InvalidArgument,
 			"reservation_id must not be empty")
@@ -672,9 +693,22 @@ func (s *agentWalletServer) ReleaseReservation(_ context.Context,
 		released = true
 	}
 
+	warnings := make([]string, 0, 1)
+	if released {
+		if err := s.markReservationReleased(
+			req.ReservationId, time.Now().Unix(),
+		); err != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"reservation released but metadata persistence failed: %v",
+				err,
+			))
+		}
+	}
+
 	return &pb.ReleaseReservationResponse{
 		Meta: &pb.ResponseMeta{
 			RequestId: requestID(req.GetMeta()),
+			Warnings:  warnings,
 		},
 		ReservationId: req.ReservationId,
 		Released:      released,
@@ -684,6 +718,9 @@ func (s *agentWalletServer) ReleaseReservation(_ context.Context,
 func (s *agentWalletServer) GetOperation(_ context.Context,
 	req *pb.GetOperationRequest) (*pb.GetOperationResponse, error) {
 
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
 	if req.OperationId == "" {
 		return nil, status.Error(codes.InvalidArgument,
 			"operation_id must not be empty")
@@ -703,6 +740,628 @@ func (s *agentWalletServer) GetOperation(_ context.Context,
 		},
 		Operation: cloneOperation(op),
 	}, nil
+}
+
+func (s *agentWalletServer) ListOperations(_ context.Context,
+	req *pb.ListOperationsRequest) (*pb.ListOperationsResponse, error) {
+
+	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
+
+	limit := int(req.GetLimit())
+	if limit <= 0 {
+		limit = defaultListOperationsLimit
+	}
+
+	newestFirst := true
+	if req.NewestFirst != nil {
+		newestFirst = req.GetNewestFirst()
+	}
+
+	filterWalletID := ""
+	if req.GetWalletId() != "" {
+		filterWalletID = normalizeWalletID(req.GetWalletId())
+	}
+
+	s.mu.Lock()
+	operations := make([]*pb.Operation, 0, len(s.operations))
+	for _, op := range s.operations {
+		if op == nil {
+			continue
+		}
+		if filterWalletID != "" && op.GetWalletId() != filterWalletID {
+			continue
+		}
+		if req.GetState() != "" && op.GetState() != req.GetState() {
+			continue
+		}
+		if req.GetKind() != "" && op.GetKind() != req.GetKind() {
+			continue
+		}
+		if req.GetCreatorPrincipal() != "" &&
+			op.GetCreatorPrincipal() != req.GetCreatorPrincipal() {
+
+			continue
+		}
+
+		operations = append(operations, cloneOperation(op))
+	}
+	s.mu.Unlock()
+
+	sort.Slice(operations, func(i, j int) bool {
+		left := operations[i]
+		right := operations[j]
+		leftTime := left.GetUpdatedAtUnix()
+		rightTime := right.GetUpdatedAtUnix()
+		if leftTime == 0 {
+			leftTime = left.GetCreatedAtUnix()
+		}
+		if rightTime == 0 {
+			rightTime = right.GetCreatedAtUnix()
+		}
+		if leftTime != rightTime {
+			if newestFirst {
+				return leftTime > rightTime
+			}
+			return leftTime < rightTime
+		}
+		if newestFirst {
+			return left.GetOperationId() > right.GetOperationId()
+		}
+		return left.GetOperationId() < right.GetOperationId()
+	})
+
+	if len(operations) > limit {
+		operations = operations[:limit]
+	}
+
+	return &pb.ListOperationsResponse{
+		Meta: &pb.ResponseMeta{
+			RequestId: requestID(req.GetMeta()),
+		},
+		Operations: operations,
+	}, nil
+}
+
+func (s *agentWalletServer) ensurePersistenceLoaded() error {
+	s.persistenceLoadOnce.Do(func() {
+		if s.persistence == nil {
+			s.persistenceLoadErr = fmt.Errorf(
+				"agent wallet persistence store is not configured",
+			)
+			return
+		}
+
+		operations, reservations, artifacts, capabilities,
+			signerSessions, err := s.persistence.load()
+		if err != nil {
+			s.persistenceLoadErr = err
+			return
+		}
+
+		s.mu.Lock()
+		s.operations = operations
+		s.reservations = reservations
+		s.artifacts = artifacts
+		s.capabilities = capabilities
+		s.signerSessions = signerSessions
+		s.mu.Unlock()
+
+		if err := s.reconcileRecoveredSignerSessions(); err != nil {
+			s.persistenceLoadErr = err
+		}
+	})
+
+	if s.persistenceLoadErr != nil {
+		return status.Errorf(codes.Aborted,
+			"agent wallet persistence unavailable: %v",
+			s.persistenceLoadErr)
+	}
+
+	return nil
+}
+
+func (s *agentWalletServer) markReservationReleased(reservationID string,
+	releasedAtUnix int64) error {
+
+	if reservationID == "" {
+		return nil
+	}
+
+	s.mu.Lock()
+	record, ok := s.reservations[reservationID]
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+
+	updated := cloneReservationRecord(record)
+	updated.Released = true
+	if updated.ReleasedAtUnix == 0 {
+		updated.ReleasedAtUnix = releasedAtUnix
+	}
+	updated.UpdatedAtUnix = releasedAtUnix
+
+	if err := s.persistence.putReservation(updated); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	s.reservations[reservationID] = updated
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *agentWalletServer) loadRenewalOperation(
+	operationID string) (*pb.Operation, *agentOperationArtifacts, error) {
+
+	s.mu.Lock()
+	op, ok := s.operations[operationID]
+	artifacts := s.artifacts[operationID]
+	s.mu.Unlock()
+	if !ok {
+		return nil, nil, status.Errorf(codes.NotFound,
+			"operation %s not found", operationID)
+	}
+
+	clonedOp := cloneOperation(op)
+	if !isRenewalOperationKind(clonedOp.Kind) {
+		return nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is not a renewal operation", operationID)
+	}
+	if clonedOp.Summary == nil {
+		return nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is missing renewal summary", operationID)
+	}
+	if len(clonedOp.Outpoints) == 0 {
+		return nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s has no selected outpoints", operationID)
+	}
+	if clonedOp.Summary.TargetAmountSat <= 0 {
+		return nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s has invalid target amount", operationID)
+	}
+
+	return clonedOp, cloneOperationArtifacts(artifacts), nil
+}
+
+func (s *agentWalletServer) selectedOutputsForOperation(op *pb.Operation,
+	validateReservation bool) ([]*wallet.TransactionOutput, []wire.OutPoint,
+	btcutil.Address, []byte, error) {
+
+	targetAddress := op.GetSummary().GetTargetAddress()
+	if targetAddress == "" {
+		return nil, nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is missing target address", op.OperationId)
+	}
+
+	targetAddr, err := decodeAddress(targetAddress, s.wallet.ChainParams())
+	if err != nil {
+		return nil, nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s has invalid target address: %v",
+			op.OperationId, err)
+	}
+
+	selectedOutputs, err := s.lookupOutputs(
+		op.AccountNumber, op.MinConfirmations, op.Outpoints,
+	)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	selectedOutpoints := make([]wire.OutPoint, 0, len(selectedOutputs))
+	for _, output := range selectedOutputs {
+		selectedOutpoints = append(selectedOutpoints, output.OutPoint)
+	}
+
+	if validateReservation {
+		if err := s.validateRequestedReservation(
+			selectedOutpoints, op.ReservationId,
+		); err != nil {
+			return nil, nil, nil, nil, err
+		}
+	}
+
+	pkScript, err := txscript.PayToAddrScript(targetAddr)
+	if err != nil {
+		return nil, nil, nil, nil, translateError(err)
+	}
+
+	return selectedOutputs, selectedOutpoints, targetAddr, pkScript, nil
+}
+
+func (s *agentWalletServer) buildUnsignedRenewalPsbt(op *pb.Operation,
+	selectedOutpoints []wire.OutPoint,
+	targetPkScript []byte) (*psbt.Packet, int64, error) {
+
+	inputs := make([]*wire.OutPoint, 0, len(selectedOutpoints))
+	sequences := make([]uint32, 0, len(selectedOutpoints))
+	for i := range selectedOutpoints {
+		outpoint := selectedOutpoints[i]
+		inputs = append(inputs, &outpoint)
+		sequences = append(sequences, wire.MaxTxInSequenceNum)
+	}
+
+	packet, err := psbt.New(
+		inputs,
+		[]*wire.TxOut{{
+			Value:    op.Summary.TargetAmountSat,
+			PkScript: targetPkScript,
+		}},
+		wire.TxVersion,
+		0,
+		sequences,
+	)
+	if err != nil {
+		return nil, 0, status.Errorf(codes.InvalidArgument,
+			"unable to create renewal PSBT skeleton: %v", err)
+	}
+
+	feeRate := txrules.DefaultRelayFeePerKb
+	if op.Summary.FeeRateSatPerKb > 0 {
+		feeRate = btcutil.Amount(op.Summary.FeeRateSatPerKb)
+	}
+
+	_, err = s.wallet.FundPsbt(
+		packet,
+		nil,
+		op.MinConfirmations,
+		op.AccountNumber,
+		feeRate,
+		wallet.CoinSelectionLargest,
+	)
+	if err != nil {
+		return nil, 0, translateError(err)
+	}
+
+	return packet, int64(feeRate), nil
+}
+
+func (s *agentWalletServer) signRenewalOperation(operationID,
+	finalKind string, meta *pb.RequestMeta, signerSessionID string,
+	requiredPermissions ...string) (*pb.Operation,
+	*agentOperationArtifacts, []string, error) {
+
+	op, artifacts, err := s.loadRenewalOperation(operationID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if _, _, err := s.requireSignerSessionForOperation(
+		op, meta, signerSessionID, requiredPermissions...,
+	); err != nil {
+		return nil, nil, nil, err
+	}
+
+	switch op.State {
+	case operationStateSigned:
+		if artifacts != nil && len(artifacts.SignedPsbt) > 0 {
+			return op, artifacts, []string{
+				"operation already signed; returning recorded signed PSBT",
+			}, nil
+		}
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is marked signed but signed PSBT is unavailable",
+			operationID)
+
+	case operationStatePublished:
+		if artifacts != nil && len(artifacts.SignedPsbt) > 0 {
+			return op, artifacts, []string{
+				"operation already published; returning recorded signed PSBT",
+			}, nil
+		}
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is marked published but signed PSBT is unavailable",
+			operationID)
+
+	case operationStateDraft:
+		// Continue with signing.
+
+	default:
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is in unsupported state %s",
+			operationID, op.State)
+	}
+
+	if s.wallet.Manager.WatchOnly() {
+		return nil, nil, nil, status.Error(codes.FailedPrecondition,
+			"wallet is watch-only; use PreviewRenewal and an external signing flow")
+	}
+
+	selectedOutputs, selectedOutpoints, _, targetPkScript, err :=
+		s.selectedOutputsForOperation(op, true)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	effectivePolicy, warnings, err := s.resolveSubmitExpiryPolicy(op)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	tipHeight := s.wallet.SyncedTo().Height
+	expiryRisks, err := buildExpiryRiskItems(
+		selectedOutputs, tipHeight, effectivePolicy, len(selectedOutputs), nil,
+	)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to analyze renewal expiry risk: %v", err)
+	}
+	warnings = append(warnings, warningsFromExpiryRisks(expiryRisks)...)
+
+	if artifacts == nil {
+		artifacts = &agentOperationArtifacts{
+			OperationID: operationID,
+		}
+	}
+
+	var packet *psbt.Packet
+	if len(artifacts.UnsignedPsbt) > 0 {
+		packet, err = parsePsbtBytes(artifacts.UnsignedPsbt)
+		if err != nil {
+			return nil, nil, nil, status.Errorf(codes.InvalidArgument,
+				"stored unsigned PSBT is invalid: %v", err)
+		}
+	} else {
+		packet, _, err = s.buildUnsignedRenewalPsbt(
+			op, selectedOutpoints, targetPkScript,
+		)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		unsignedPsbt, _, err := serializePsbt(packet)
+		if err != nil {
+			return nil, nil, nil, status.Errorf(codes.Internal,
+				"failed to serialize unsigned PSBT: %v", err)
+		}
+		artifacts.UnsignedPsbt = unsignedPsbt
+	}
+
+	if err := s.signerBackend.FinalizePsbt(
+		signerSessionID, op.AccountNumber, packet,
+	); err != nil {
+		if status.Code(err) != codes.Unknown {
+			return nil, nil, nil, err
+		}
+		return nil, nil, nil, translateError(err)
+	}
+
+	signedPsbt, _, err := serializePsbt(packet)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to serialize signed PSBT: %v", err)
+	}
+
+	tx, err := psbt.Extract(packet)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to extract signed transaction: %v", err)
+	}
+
+	signedTx, err := serializeTransaction(tx)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to serialize signed transaction: %v", err)
+	}
+
+	now := time.Now().Unix()
+	fromState := op.State
+	op.Kind = finalKind
+	op.State = operationStateSigned
+	op.PolicyVerdict = policyVerdictFromExpiryRisks(expiryRisks)
+	op.Warnings = mergeWarnings(op.Warnings, warnings)
+	op.UpdatedAtUnix = now
+	op.ExpiryRisks = cloneExpiryRisks(expiryRisks)
+	op.EffectivePolicy = toPBExpiryPolicy(effectivePolicy)
+	s.mu.Lock()
+	op.History = append(op.History, s.newOperationEventLocked(
+		meta, operationActionPsbtSigned, fromState, operationStateSigned,
+		warnings, "", now,
+	))
+	s.mu.Unlock()
+
+	artifacts.SignedPsbt = signedPsbt
+	artifacts.SignedTransaction = signedTx
+
+	if err := s.persistence.putOperationBundle(op, artifacts); err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to persist signed renewal artifacts: %v", err)
+	}
+
+	s.mu.Lock()
+	s.operations[operationID] = cloneOperation(op)
+	s.artifacts[operationID] = cloneOperationArtifacts(artifacts)
+	s.mu.Unlock()
+
+	return cloneOperation(op), cloneOperationArtifacts(artifacts),
+		warnings, nil
+}
+
+func (s *agentWalletServer) publishRenewalOperation(operationID string,
+	signedPsbtOverride []byte, label string, finalKind,
+	defaultLabel string, meta *pb.RequestMeta, signerSessionID string,
+	requiredPermissions ...string) (*pb.Operation,
+	*agentOperationArtifacts, []string, error) {
+
+	op, artifacts, err := s.loadRenewalOperation(operationID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if _, err := s.requirePublishAuthorization(
+		op, meta, signerSessionID, requiredPermissions...,
+	); err != nil {
+		return nil, nil, nil, err
+	}
+
+	if op.State == operationStatePublished {
+		return op, artifacts, []string{
+			"operation already published; returning recorded transaction metadata",
+		}, nil
+	}
+	if op.State != operationStateDraft && op.State != operationStateSigned {
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"operation %s is in unsupported state %s",
+			operationID, op.State)
+	}
+
+	selectedOutputs, selectedOutpoints, targetAddr, targetPkScript, err :=
+		s.selectedOutputsForOperation(op, false)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	effectivePolicy, warnings, err := s.resolveSubmitExpiryPolicy(op)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	tipHeight := s.wallet.SyncedTo().Height
+	expiryRisks, err := buildExpiryRiskItems(
+		selectedOutputs, tipHeight, effectivePolicy, len(selectedOutputs), nil,
+	)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to analyze renewal expiry risk: %v", err)
+	}
+	warnings = append(warnings, warningsFromExpiryRisks(expiryRisks)...)
+
+	if artifacts == nil {
+		artifacts = &agentOperationArtifacts{
+			OperationID: operationID,
+		}
+	}
+
+	var packet *psbt.Packet
+	switch {
+	case len(signedPsbtOverride) > 0:
+		packet, err = parsePsbtBytes(signedPsbtOverride)
+		if err != nil {
+			return nil, nil, nil, status.Errorf(codes.InvalidArgument,
+				"invalid signed_psbt: %v", err)
+		}
+
+	case len(artifacts.SignedPsbt) > 0:
+		packet, err = parsePsbtBytes(artifacts.SignedPsbt)
+		if err != nil {
+			return nil, nil, nil, status.Errorf(codes.InvalidArgument,
+				"stored signed PSBT is invalid: %v", err)
+		}
+
+	default:
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"signed PSBT not available; call SignPsbt or provide signed_psbt")
+	}
+
+	if err := psbt.MaybeFinalizeAll(packet); err != nil {
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"signed PSBT is not finalized: %v", err)
+	}
+
+	normalizedSignedPsbt, _, err := serializePsbt(packet)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to serialize signed PSBT: %v", err)
+	}
+
+	tx, err := psbt.Extract(packet)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to extract signed transaction: %v", err)
+	}
+
+	rawTx, err := serializeTransaction(tx)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to serialize published transaction: %v", err)
+	}
+
+	summary, err := summarizePublishedTransaction(
+		tx, selectedOutputs, targetPkScript, targetAddr.EncodeAddress(),
+		op.Summary.TargetAmountSat, op.Summary.FeeRateSatPerKb,
+	)
+	if err != nil {
+		return nil, nil, nil, status.Errorf(codes.Internal,
+			"failed to summarize published renewal transaction: %v", err)
+	}
+
+	if label == "" {
+		label = defaultLabel
+	}
+	if err := s.wallet.PublishTransaction(tx, label); err != nil {
+		return nil, nil, nil, translateError(err)
+	}
+
+	if op.ReservationId != "" {
+		if releaseErr := releaseLeasedOutpoints(
+			s.wallet, reservationLockID(op.ReservationId), selectedOutpoints,
+		); releaseErr != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"transaction published but reservation release failed: %v",
+				releaseErr,
+			))
+		} else if persistErr := s.markReservationReleased(
+			op.ReservationId, time.Now().Unix(),
+		); persistErr != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"transaction published but reservation metadata persistence failed: %v",
+				persistErr,
+			))
+		}
+	}
+
+	now := time.Now().Unix()
+	fromState := op.State
+	op.Kind = finalKind
+	op.State = operationStatePublished
+	op.PolicyVerdict = policyVerdictFromExpiryRisks(expiryRisks)
+	op.Warnings = mergeWarnings(op.Warnings, warnings)
+	op.UpdatedAtUnix = now
+	op.Summary = cloneSummary(summary)
+	op.ExpiryRisks = cloneExpiryRisks(expiryRisks)
+	op.EffectivePolicy = toPBExpiryPolicy(effectivePolicy)
+	op.Txid = tx.TxHash().String()
+	s.mu.Lock()
+	op.History = append(op.History, s.newOperationEventLocked(
+		meta, operationActionTxPublished, fromState, operationStatePublished,
+		warnings, op.Txid, now,
+	))
+	s.mu.Unlock()
+
+	artifacts.SignedPsbt = normalizedSignedPsbt
+	artifacts.SignedTransaction = rawTx
+
+	if err := s.persistence.putOperationBundle(op, artifacts); err != nil {
+		warnings = append(warnings, fmt.Sprintf(
+			"transaction published but operation persistence failed: %v",
+			err,
+		))
+		op.Warnings = mergeWarnings(op.Warnings, warnings)
+	}
+
+	s.mu.Lock()
+	s.operations[operationID] = cloneOperation(op)
+	s.artifacts[operationID] = cloneOperationArtifacts(artifacts)
+	s.mu.Unlock()
+
+	return cloneOperation(op), cloneOperationArtifacts(artifacts),
+		warnings, nil
+}
+
+func isRenewalOperationKind(kind string) bool {
+	switch kind {
+	case operationKindRenewPreview,
+		operationKindRenewSign,
+		operationKindRenewPublish,
+		operationKindRenewSubmit:
+
+		return true
+
+	default:
+		return false
+	}
 }
 
 func (s *agentWalletServer) resolveExpiryPolicy(
@@ -906,6 +1565,29 @@ func (s *agentWalletServer) newOperationIDLocked() string {
 func (s *agentWalletServer) newReservationIDLocked() string {
 	s.nextReservationID++
 	return fmt.Sprintf("res_%d_%d", time.Now().UnixNano(), s.nextReservationID)
+}
+
+func (s *agentWalletServer) newEventIDLocked() string {
+	s.nextEventID++
+	return fmt.Sprintf("evt_%d_%d", time.Now().UnixNano(), s.nextEventID)
+}
+
+func (s *agentWalletServer) newOperationEventLocked(meta *pb.RequestMeta,
+	action, fromState, toState string, warnings []string, txid string,
+	createdAtUnix int64) *pb.OperationEvent {
+
+	return &pb.OperationEvent{
+		EventId:       s.newEventIDLocked(),
+		Action:        action,
+		FromState:     fromState,
+		ToState:       toState,
+		RequestId:     requestID(meta),
+		Principal:     meta.GetPrincipal(),
+		CapabilityId:  meta.GetCapabilityId(),
+		Warnings:      append([]string(nil), warnings...),
+		CreatedAtUnix: createdAtUnix,
+		Txid:          txid,
+	}
 }
 
 func requestID(meta *pb.RequestMeta) string {
@@ -1208,6 +1890,10 @@ func summarizePublishedTransaction(tx *wire.MsgTx,
 	targetAddress string, targetAmountSat,
 	feeRateSatPerKB int64) (*pb.TransactionSummary, error) {
 
+	if len(tx.TxIn) != len(selectedOutputs) {
+		return nil, fmt.Errorf("published transaction input count mismatch")
+	}
+
 	totalInput := int64(0)
 	selectedByOutpoint := make(map[wire.OutPoint]*wallet.TransactionOutput,
 		len(selectedOutputs))
@@ -1286,6 +1972,33 @@ func serializePsbt(packet *psbt.Packet) ([]byte, string, error) {
 	return raw.Bytes(), b64, nil
 }
 
+func parsePsbtBytes(raw []byte) (*psbt.Packet, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("psbt bytes must not be empty")
+	}
+
+	packet, err := psbt.NewFromRawBytes(bytes.NewReader(raw), false)
+	if err == nil {
+		return packet, nil
+	}
+
+	packet, b64Err := psbt.NewFromRawBytes(bytes.NewReader(raw), true)
+	if b64Err == nil {
+		return packet, nil
+	}
+
+	return nil, err
+}
+
+func psbtB64FromBytes(raw []byte) (string, error) {
+	packet, err := parsePsbtBytes(raw)
+	if err != nil {
+		return "", err
+	}
+
+	return packet.B64Encode()
+}
+
 func serializeTransaction(tx *wire.MsgTx) ([]byte, error) {
 	var raw bytes.Buffer
 	if err := tx.Serialize(&raw); err != nil {
@@ -1305,6 +2018,7 @@ func cloneOperation(op *pb.Operation) *pb.Operation {
 	cp.Summary = cloneSummary(op.Summary)
 	cp.ExpiryRisks = cloneExpiryRisks(op.ExpiryRisks)
 	cp.EffectivePolicy = cloneExpiryPolicy(op.EffectivePolicy)
+	cp.History = cloneOperationEvents(op.History)
 	return &cp
 }
 
@@ -1336,6 +2050,24 @@ func cloneExpiryRisks(items []*pb.ExpiryRisk) []*pb.ExpiryRisk {
 			continue
 		}
 		cp := *item
+		cloned = append(cloned, &cp)
+	}
+	return cloned
+}
+
+func cloneOperationEvents(items []*pb.OperationEvent) []*pb.OperationEvent {
+	if len(items) == 0 {
+		return nil
+	}
+
+	cloned := make([]*pb.OperationEvent, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			cloned = append(cloned, nil)
+			continue
+		}
+		cp := *item
+		cp.Warnings = append([]string(nil), item.Warnings...)
 		cloned = append(cloned, &cp)
 	}
 	return cloned

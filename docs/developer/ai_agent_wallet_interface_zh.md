@@ -521,7 +521,7 @@ Human Operator (CLI)      AI Agents / Services
 
 | 方法 | 作用 | 说明 |
 | --- | --- | --- |
-| `GetWalletState` | 当前钱包全局状态 | 网络、高度、同步状态、账户摘要 |
+| `GetWalletState` | 当前钱包全局状态 | 网络、高度、同步状态、账户摘要，以及当前 signer backend 模式 |
 | `ListUtxos` | 查询 UTXO | 支持账户、标签、锁状态、expiry 过滤 |
 | `GetExpiryRisk` | 查询到期风险 | AI 的一等公民接口 |
 | `StreamWalletEvents` | 事件流 | 支持 expiry / renew / sync / fee / policy 事件 |
@@ -553,11 +553,13 @@ Human Operator (CLI)      AI Agents / Services
 
 | 方法 | 作用 | 说明 |
 | --- | --- | --- |
-| `SubmitRenewal` | 提交预演过的续期操作 | 当前 phase-1 已落地，基于 `operation_id` 执行并广播 |
+| `SubmitRenewal` | 提交预演过的续期操作 | 当前 phase-1 兼容包装器，内部顺序调用 `SignPsbt` + `PublishTransaction` |
+| `OpenSignerSession` | 打开本地 signer 会话 | 当前 phase-1.5 已落地，仅 local signer backend 可用 |
+| `CloseSignerSession` | 关闭 signer 会话 | 当前 phase-1.5 已落地，主动结束本地 signer 会话 |
 | `SignPlan` | 请求 signer 对计划签名 | capability + policy + session |
-| `SignPsbt` | 对 PSBT 签名 | 适合多系统协作 |
+| `SignPsbt` | 对 PSBT 签名 | 当前 phase-1 已落地，基于 `operation_id` 和持久化 unsigned PSBT |
 | `FinalizePlan` | 完成交易装配 | 可选步骤 |
-| `PublishTransaction` | 广播交易 | 和签名解耦 |
+| `PublishTransaction` | 广播交易 | 当前 phase-1 已落地，支持复用已签名 PSBT 或直接接收外部 signed PSBT；phase-1.5 增加 capability 校验 |
 
 ### 7.5 策略接口
 
@@ -565,15 +567,15 @@ Human Operator (CLI)      AI Agents / Services
 | --- | --- | --- |
 | `UpsertRenewalPolicy` | 配置续期策略 | 持久化，不应只停留在进程内 |
 | `UpsertSpendPolicy` | 配置花费策略 | 限额、白名单、费率上限 |
-| `IssueCapability` | 发放权限令牌 | 给具体 agent |
-| `RevokeCapability` | 撤销权限令牌 | 发现异常时快速止血 |
+| `IssueCapability` | 发放权限令牌 | 当前 phase-1.5 已落地，给具体 agent/CLI 会话 |
+| `RevokeCapability` | 撤销权限令牌 | 当前 phase-1.5 已落地，发现异常时快速止血 |
 
 ### 7.6 审计接口
 
 | 方法 | 作用 | 说明 |
 | --- | --- | --- |
 | `GetOperation` | 查询单个操作 | 计划、签名、广播全链路 |
-| `ListOperations` | 列出操作 | 支持时间、agent、状态过滤 |
+| `ListOperations` | 列出操作 | 当前 phase-1 已落地，支持 wallet/state/kind/creator 过滤和顺序控制 |
 | `GetDecisionLog` | 查询策略决策依据 | 便于回放 agent 行为 |
 
 ---
@@ -771,17 +773,52 @@ REORGED
 - `GetWalletState`
 - `ListUtxos`
 - `GetExpiryRisk`
+- `IssueCapability`
+- `RevokeCapability`
+- `OpenSignerSession`
+- `GetSignerSession`
+- `CloseSignerSession`
 - `PreviewRenewal`
+- `SignPsbt`
+- `PublishTransaction`
 - `SubmitRenewal`
 - `ReserveUtxos`
 - `ReleaseReservation`
 - `GetOperation`
+- `ListOperations`
 
 其中当前真正形成闭环的执行路径是：
 
+- `GetExpiryRisk` -> `PreviewRenewal` -> `SignPsbt` -> `PublishTransaction`
 - `GetExpiryRisk` -> `PreviewRenewal` -> `SubmitRenewal`
 
-也就是说，当前版本已经支持 agent 或 CLI 先拿到 unsigned PSBT 和风险视图，再基于 `operation_id` 执行同一份续期草案并广播。`SubmitRenewal` 暂时是 `preview-first` 语义，不接受脱离预演上下文的自由提交。
+也就是说，当前版本已经支持 agent 或 CLI 先拿到 unsigned PSBT 和风险视图，再基于 `operation_id` 分步签名和广播；`SubmitRenewal` 继续保留为兼容包装器。当前 `PublishTransaction` 也支持直接接收外部 signer 返回的 signed PSBT，但仍然要求绑定已有 `operation_id`，不会脱离预演上下文自由提交。
+
+另外，当前 `operation` 已经开始携带基础审计元数据，包括：
+
+- `creator_principal`
+- `creator_capability_id`
+- `create_idempotency_key`
+- `history[]`
+
+这意味着 phase-1 已经能记录“谁创建了操作、谁触发了签名/广播、状态如何迁移、当时有哪些 warning、最终广播出的 txid 是什么”。但它仍然只是最小闭环，还不是完整的策略决策证据系统。
+
+当前 phase-1.5 还新增了最小 capability / signer session 约束：
+
+- `IssueCapability` / `RevokeCapability` 把授权对象持久化到 walletdb
+- `OpenSignerSession` / `CloseSignerSession` 把本地 signer 从“裸 `wallet.Unlock`”收敛成显式会话
+- `SignPsbt` / `SubmitRenewal` 现在要求 `capability_id + signer_session_id`
+- `PublishTransaction` 现在要求 `capability_id`，并可选绑定 `signer_session_id`
+- signer runtime 已经被抽象成 backend interface，当前已有 `local`、`publish_only`、`remote` 三种 backend
+
+其中当前 backend 语义是：
+
+- `local`：可打开本地 signer session，并在 session 内完成 `SignPsbt`
+- `publish_only`：不提供本地 signer session，只接受外部 signer 返回的 signed PSBT，再通过 `PublishTransaction` 广播
+- `remote`：已落 skeleton，可打开 agent 侧 signer session；若远端 signer transport 尚未接通，则仍需外部 signer 产出 signed PSBT，再走 `PublishTransaction`
+- `GetWalletState` 已会返回 `signer_backend` 元数据，供 AI/CLI 判断当前应走哪条执行路径
+
+但要明确一点：底层本地 signer 目前仍然复用 wallet 的全局 unlock 语义，因此当前实现只支持一个 active local signer session。这是兼容性过渡层，不是最终的多 signer backend 形态。
 
 下面这段仍然保留为“更长线的目标草案”，用于约束后续 capability / signer / event stream / publish path 的演进方向。
 
@@ -881,12 +918,12 @@ message PreviewRenewalResponse {
 | CLI 命令 | 建议映射 API | 说明 |
 | --- | --- | --- |
 | `renewall --dry-run ...` | `GetExpiryRisk` + `PreviewRenewal` | 查询并预演，不签名 |
-| `renewall ...` | `GetExpiryRisk` + `PreviewRenewal` + `SubmitRenewal` | 当前 phase-1 的可执行闭环 |
+| `renewall ...` | `GetExpiryRisk` + `PreviewRenewal` + `SignPsbt` + `PublishTransaction` | 当前 phase-1 更推荐的执行闭环 |
 | `walletpassphrase` | 不直接暴露为长期主接口 | 未来更适合 session/capability |
 | `walletlock` | `CloseSignerSession` 或 `RevokeCapability` 的兼容实现 | 收敛到 signer/session 模型 |
 | `getnewaddress` | `NextAddress` 或未来 `CreateAddressIntent` | 保持兼容 |
 | `obtc.getexpiry` | `GetExpiryRisk` | 逐步迁移 |
-| `obtc.renew` | `PreviewRenewal` + `SubmitRenewal` | 当前更适合先迁到 preview-first |
+| `obtc.renew` | `PreviewRenewal` + `SignPsbt` + `PublishTransaction` | 当前更适合先迁到 preview-first |
 
 这样做的含义不是删除 CLI，而是让 CLI 变成：
 
@@ -1033,7 +1070,7 @@ PSBT-first 的好处：
 | 钱包创建/加载 | `WalletLoaderService` | 现有 loader 可保留，但生产模式要增加 watch-only / remote signer |
 | 地址生成 | `NextAddress` / `wallet.NewAddress` | 可直接复用 |
 | 到期基础计算 | `wallet.BuildExpiryInfo` | 应改为链参数驱动 |
-| 手动续期执行 | `SendOutputsWithInput` | 可作为 `SubmitRenewal` 底层执行器 |
+| 手动续期执行 | `SendOutputsWithInput` | 仍可作为兼容包装器 `SubmitRenewal` 的底层执行器 |
 | 自动续期策略骨架 | `ConfigureAutoRenew` / `wallet/autorenew.go` | 需要补持久化和事件化 |
 | expiry policy 解析 | `wallet/ResolveExpiryPolicy` | 已支持 source file / network override / fallback |
 | PSBT 规划 | `FundPsbt` | 可直接复用为计划层底座 |
@@ -1048,8 +1085,8 @@ PSBT-first 的好处：
 
 1. `LockOutpoint` / `UnlockOutpoint` 仍然只是进程内锁；agent 路径应统一基于 `LeaseOutput` / `ReleaseOutput`，当前 phase-1 已按这个方向实现。
 2. `ConfigureAutoRenew` 当前是进程内配置，不是持久化策略对象。
-3. `obtc.getexpiry` / `obtc.renew` 仍然是 legacy RPC 语义；虽然 agent gRPC 已有 `GetExpiryRisk` / `PreviewRenewal` / `SubmitRenewal` / `GetOperation`，但显式的 signer session、独立 `SignPsbt`、持久化 audit log 还没有闭环。
-4. 当前 signer 还是“钱包解锁后直接签名”，没有显式 session/capability 抽象。
+3. `obtc.getexpiry` / `obtc.renew` 仍然是 legacy RPC 语义；虽然 agent gRPC 已有 `GetExpiryRisk` / `IssueCapability` / `OpenSignerSession` / `PreviewRenewal` / `SignPsbt` / `PublishTransaction` / `SubmitRenewal` / `GetOperation` / `ListOperations`，而且 `operation` / `reservation` / `capability` / `signer_session` 元数据已经落到 walletdb、支持重启恢复，并带有最小可用的 history 审计轨迹，但完整 decision log 和真正可用的 remote/HSM signer transport 还没有闭环。
+4. 当前 signer runtime 已经被抽成 backend interface，并且已有 `local`、`publish_only`、`remote` 三种 backend；不过 `remote` 目前还是 transport skeleton，`local` 底层仍然复用 wallet 的全局 unlock 语义，所以本地模式只支持一个 active session。
 5. expiry 参数已经被抽象成共享 resolver，并支持 `OBTC_CHAINCFG_PATH` / `OBTC_EXPIRY_NETWORK`；但这仍然属于“runtime source resolution”，不是直接链接 obtcd module 的最终形态。
 
 ### 11.2 建议的最小实现顺序
@@ -1061,12 +1098,16 @@ PSBT-first 的好处：
 3. 用 `LeaseOutput` / `ReleaseOutput` 做持久化 `reservation`
 4. 让 `PreviewRenewal` 直接复用 `FundPsbt`，返回 unsigned PSBT 和交易摘要
 5. 增加 `SubmitRenewal`，基于 `operation_id` 执行并广播已预演的续期交易
+6. 把 `operation` / `reservation` 元数据从内存态提升为 walletdb 持久化对象，并在服务启动时恢复
+7. 拆出 `SignPsbt` / `PublishTransaction`，让本地 signer 和外部 signer 都能走 preview-first 执行链路
+8. 引入最小 capability / signer session，对 `SignPsbt` / `SubmitRenewal` / `PublishTransaction` 增加程序化授权约束
+9. 把 signer runtime 抽象成 backend interface，避免 session/open/close/sign 继续硬编码在 agent server 中
 
 下一步更合理的顺序是：
 
 1. 把当前 runtime resolver 升级成直接链接 obtcd module 的真实链参数来源，移除对文件路径和环境变量的依赖
-2. 把 `operation` / `reservation` 元数据从内存态提升为可恢复、可审计的持久化对象
-3. 在已有 `SubmitRenewal` 基础上继续拆出 `SignPsbt` / `PublishTransaction` 等 signer-aware 执行路径
+2. 在现有 `remote` backend skeleton 上接通真实 remote signer / HSM signer transport，而不只是停留在模式识别和 session 壳层
+3. 给 `operation` 增加更完整的决策证据对象，例如 decision log / policy snapshot / signer proof，而不只是当前状态迁移 history
 4. 给 CLI 增加一个直接走 agent gRPC 的路径
 5. 最后再考虑把 legacy `obtc.renew` 重定向到新执行链路
 

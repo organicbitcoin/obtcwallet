@@ -6,17 +6,25 @@ option go_package = "github.com/btcsuite/btcwallet/rpc/agentwalletrpc;agentwalle
 
 // AgentWalletService defines a phase-1 programmatic API for AI agents and
 // human-facing CLI adapters. The initial scope covers wallet state, UTXO
-// inspection, expiry risk analysis, renewal planning/submission, persistent
-// reservations, and operation lookup.
+// inspection, expiry risk analysis, renewal planning/signing/publication,
+// persistent reservations, operation lookup, and audit history.
 service AgentWalletService {
     rpc GetWalletState (GetWalletStateRequest) returns (GetWalletStateResponse);
     rpc ListUtxos (ListUtxosRequest) returns (ListUtxosResponse);
     rpc GetExpiryRisk (GetExpiryRiskRequest) returns (GetExpiryRiskResponse);
+    rpc IssueCapability (IssueCapabilityRequest) returns (IssueCapabilityResponse);
+    rpc RevokeCapability (RevokeCapabilityRequest) returns (RevokeCapabilityResponse);
+    rpc OpenSignerSession (OpenSignerSessionRequest) returns (OpenSignerSessionResponse);
+    rpc GetSignerSession (GetSignerSessionRequest) returns (GetSignerSessionResponse);
+    rpc CloseSignerSession (CloseSignerSessionRequest) returns (CloseSignerSessionResponse);
     rpc PreviewRenewal (PreviewRenewalRequest) returns (PreviewRenewalResponse);
+    rpc SignPsbt (SignPsbtRequest) returns (SignPsbtResponse);
+    rpc PublishTransaction (PublishTransactionRequest) returns (PublishTransactionResponse);
     rpc SubmitRenewal (SubmitRenewalRequest) returns (SubmitRenewalResponse);
     rpc ReserveUtxos (ReserveUtxosRequest) returns (ReserveUtxosResponse);
     rpc ReleaseReservation (ReleaseReservationRequest) returns (ReleaseReservationResponse);
     rpc GetOperation (GetOperationRequest) returns (GetOperationResponse);
+    rpc ListOperations (ListOperationsRequest) returns (ListOperationsResponse);
 }
 
 message RequestMeta {
@@ -31,6 +39,15 @@ message ResponseMeta {
     repeated string warnings = 2;
 }
 
+message SignerBackendInfo {
+    string backend_id = 1;
+    string mode = 2;
+    bool local_signing_available = 3;
+    bool external_signed_psbt_supported = 4;
+    uint32 max_active_sessions = 5;
+    string description = 6;
+}
+
 message WalletState {
     string wallet_id = 1;
     uint32 active_network = 2;
@@ -39,6 +56,7 @@ message WalletState {
     bool locked = 5;
     int32 current_block_height = 6;
     bytes current_block_hash = 7;
+    SignerBackendInfo signer_backend = 8;
 }
 
 message GetWalletStateRequest {
@@ -124,6 +142,48 @@ message TransactionSummary {
     int64 fee_rate_sat_per_kb = 10;
 }
 
+message Capability {
+    string capability_id = 1;
+    string wallet_id = 2;
+    string principal = 3;
+    repeated string permissions = 4;
+    int64 created_at_unix = 5;
+    int64 expires_at_unix = 6;
+    bool revoked = 7;
+    int64 revoked_at_unix = 8;
+    string revocation_reason = 9;
+    string issued_by = 10;
+}
+
+message SignerSession {
+    string signer_session_id = 1;
+    string wallet_id = 2;
+    string capability_id = 3;
+    string principal = 4;
+    repeated string permissions = 5;
+    int64 created_at_unix = 6;
+    int64 expires_at_unix = 7;
+    bool closed = 8;
+    int64 closed_at_unix = 9;
+    string close_reason = 10;
+    string reason = 11;
+    string open_request_id = 12;
+    string open_idempotency_key = 13;
+}
+
+message OperationEvent {
+    string event_id = 1;
+    string action = 2;
+    string from_state = 3;
+    string to_state = 4;
+    string request_id = 5;
+    string principal = 6;
+    string capability_id = 7;
+    repeated string warnings = 8;
+    int64 created_at_unix = 9;
+    string txid = 10;
+}
+
 message Operation {
     string operation_id = 1;
     string kind = 2;
@@ -141,6 +201,10 @@ message Operation {
     ExpiryPolicy effective_policy = 14;
     int32 min_confirmations = 15;
     string txid = 16;
+    string creator_principal = 17;
+    string creator_capability_id = 18;
+    string create_idempotency_key = 19;
+    repeated OperationEvent history = 20;
 }
 
 message PreviewRenewalRequest {
@@ -167,10 +231,103 @@ message PreviewRenewalResponse {
     repeated ExpiryRisk expiry_risks = 7;
 }
 
+message IssueCapabilityRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+    string principal = 3;
+    repeated string permissions = 4;
+    int64 ttl_seconds = 5;
+}
+
+message IssueCapabilityResponse {
+    ResponseMeta meta = 1;
+    Capability capability = 2;
+}
+
+message RevokeCapabilityRequest {
+    RequestMeta meta = 1;
+    string capability_id = 2;
+    string reason = 3;
+}
+
+message RevokeCapabilityResponse {
+    ResponseMeta meta = 1;
+    Capability capability = 2;
+}
+
+message OpenSignerSessionRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+    string capability_id = 3;
+    bytes passphrase = 4;
+    int64 ttl_seconds = 5;
+    string reason = 6;
+}
+
+message OpenSignerSessionResponse {
+    ResponseMeta meta = 1;
+    SignerSession session = 2;
+}
+
+message GetSignerSessionRequest {
+    RequestMeta meta = 1;
+    string signer_session_id = 2;
+}
+
+message GetSignerSessionResponse {
+    ResponseMeta meta = 1;
+    SignerSession session = 2;
+}
+
+message CloseSignerSessionRequest {
+    RequestMeta meta = 1;
+    string signer_session_id = 2;
+    string reason = 3;
+}
+
+message CloseSignerSessionResponse {
+    ResponseMeta meta = 1;
+    SignerSession session = 2;
+}
+
+message SignPsbtRequest {
+    RequestMeta meta = 1;
+    string operation_id = 2;
+    string signer_session_id = 3;
+}
+
+message SignPsbtResponse {
+    ResponseMeta meta = 1;
+    Operation operation = 2;
+    bytes signed_psbt = 3;
+    string signed_psbt_b64 = 4;
+    bytes signed_transaction = 5;
+    TransactionSummary summary = 6;
+}
+
+message PublishTransactionRequest {
+    RequestMeta meta = 1;
+    string operation_id = 2;
+    bytes signed_psbt = 3;
+    string label = 4;
+    string signer_session_id = 5;
+}
+
+message PublishTransactionResponse {
+    ResponseMeta meta = 1;
+    Operation operation = 2;
+    string txid = 3;
+    bytes raw_transaction = 4;
+    TransactionSummary summary = 5;
+    ExpiryPolicy effective_policy = 6;
+    repeated ExpiryRisk expiry_risks = 7;
+}
+
 message SubmitRenewalRequest {
     RequestMeta meta = 1;
     string operation_id = 2;
     string label = 3;
+    string signer_session_id = 4;
 }
 
 message SubmitRenewalResponse {
@@ -218,4 +375,19 @@ message GetOperationRequest {
 message GetOperationResponse {
     ResponseMeta meta = 1;
     Operation operation = 2;
+}
+
+message ListOperationsRequest {
+    RequestMeta meta = 1;
+    string wallet_id = 2;
+    string state = 3;
+    string kind = 4;
+    string creator_principal = 5;
+    uint32 limit = 6;
+    optional bool newest_first = 7;
+}
+
+message ListOperationsResponse {
+    ResponseMeta meta = 1;
+    repeated Operation operations = 2;
 }

@@ -22,11 +22,19 @@ const (
 	AgentWalletService_GetWalletState_FullMethodName     = "/agentwalletrpc.AgentWalletService/GetWalletState"
 	AgentWalletService_ListUtxos_FullMethodName          = "/agentwalletrpc.AgentWalletService/ListUtxos"
 	AgentWalletService_GetExpiryRisk_FullMethodName      = "/agentwalletrpc.AgentWalletService/GetExpiryRisk"
+	AgentWalletService_IssueCapability_FullMethodName    = "/agentwalletrpc.AgentWalletService/IssueCapability"
+	AgentWalletService_RevokeCapability_FullMethodName   = "/agentwalletrpc.AgentWalletService/RevokeCapability"
+	AgentWalletService_OpenSignerSession_FullMethodName  = "/agentwalletrpc.AgentWalletService/OpenSignerSession"
+	AgentWalletService_GetSignerSession_FullMethodName   = "/agentwalletrpc.AgentWalletService/GetSignerSession"
+	AgentWalletService_CloseSignerSession_FullMethodName = "/agentwalletrpc.AgentWalletService/CloseSignerSession"
 	AgentWalletService_PreviewRenewal_FullMethodName     = "/agentwalletrpc.AgentWalletService/PreviewRenewal"
+	AgentWalletService_SignPsbt_FullMethodName           = "/agentwalletrpc.AgentWalletService/SignPsbt"
+	AgentWalletService_PublishTransaction_FullMethodName = "/agentwalletrpc.AgentWalletService/PublishTransaction"
 	AgentWalletService_SubmitRenewal_FullMethodName      = "/agentwalletrpc.AgentWalletService/SubmitRenewal"
 	AgentWalletService_ReserveUtxos_FullMethodName       = "/agentwalletrpc.AgentWalletService/ReserveUtxos"
 	AgentWalletService_ReleaseReservation_FullMethodName = "/agentwalletrpc.AgentWalletService/ReleaseReservation"
 	AgentWalletService_GetOperation_FullMethodName       = "/agentwalletrpc.AgentWalletService/GetOperation"
+	AgentWalletService_ListOperations_FullMethodName     = "/agentwalletrpc.AgentWalletService/ListOperations"
 )
 
 // AgentWalletServiceClient is the client API for AgentWalletService service.
@@ -35,17 +43,25 @@ const (
 //
 // AgentWalletService defines a phase-1 programmatic API for AI agents and
 // human-facing CLI adapters. The initial scope covers wallet state, UTXO
-// inspection, expiry risk analysis, renewal planning/submission, persistent
-// reservations, and operation lookup.
+// inspection, expiry risk analysis, renewal planning/signing/publication,
+// persistent reservations, operation lookup, and audit history.
 type AgentWalletServiceClient interface {
 	GetWalletState(ctx context.Context, in *GetWalletStateRequest, opts ...grpc.CallOption) (*GetWalletStateResponse, error)
 	ListUtxos(ctx context.Context, in *ListUtxosRequest, opts ...grpc.CallOption) (*ListUtxosResponse, error)
 	GetExpiryRisk(ctx context.Context, in *GetExpiryRiskRequest, opts ...grpc.CallOption) (*GetExpiryRiskResponse, error)
+	IssueCapability(ctx context.Context, in *IssueCapabilityRequest, opts ...grpc.CallOption) (*IssueCapabilityResponse, error)
+	RevokeCapability(ctx context.Context, in *RevokeCapabilityRequest, opts ...grpc.CallOption) (*RevokeCapabilityResponse, error)
+	OpenSignerSession(ctx context.Context, in *OpenSignerSessionRequest, opts ...grpc.CallOption) (*OpenSignerSessionResponse, error)
+	GetSignerSession(ctx context.Context, in *GetSignerSessionRequest, opts ...grpc.CallOption) (*GetSignerSessionResponse, error)
+	CloseSignerSession(ctx context.Context, in *CloseSignerSessionRequest, opts ...grpc.CallOption) (*CloseSignerSessionResponse, error)
 	PreviewRenewal(ctx context.Context, in *PreviewRenewalRequest, opts ...grpc.CallOption) (*PreviewRenewalResponse, error)
+	SignPsbt(ctx context.Context, in *SignPsbtRequest, opts ...grpc.CallOption) (*SignPsbtResponse, error)
+	PublishTransaction(ctx context.Context, in *PublishTransactionRequest, opts ...grpc.CallOption) (*PublishTransactionResponse, error)
 	SubmitRenewal(ctx context.Context, in *SubmitRenewalRequest, opts ...grpc.CallOption) (*SubmitRenewalResponse, error)
 	ReserveUtxos(ctx context.Context, in *ReserveUtxosRequest, opts ...grpc.CallOption) (*ReserveUtxosResponse, error)
 	ReleaseReservation(ctx context.Context, in *ReleaseReservationRequest, opts ...grpc.CallOption) (*ReleaseReservationResponse, error)
 	GetOperation(ctx context.Context, in *GetOperationRequest, opts ...grpc.CallOption) (*GetOperationResponse, error)
+	ListOperations(ctx context.Context, in *ListOperationsRequest, opts ...grpc.CallOption) (*ListOperationsResponse, error)
 }
 
 type agentWalletServiceClient struct {
@@ -86,10 +102,80 @@ func (c *agentWalletServiceClient) GetExpiryRisk(ctx context.Context, in *GetExp
 	return out, nil
 }
 
+func (c *agentWalletServiceClient) IssueCapability(ctx context.Context, in *IssueCapabilityRequest, opts ...grpc.CallOption) (*IssueCapabilityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IssueCapabilityResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_IssueCapability_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentWalletServiceClient) RevokeCapability(ctx context.Context, in *RevokeCapabilityRequest, opts ...grpc.CallOption) (*RevokeCapabilityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeCapabilityResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_RevokeCapability_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentWalletServiceClient) OpenSignerSession(ctx context.Context, in *OpenSignerSessionRequest, opts ...grpc.CallOption) (*OpenSignerSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OpenSignerSessionResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_OpenSignerSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentWalletServiceClient) GetSignerSession(ctx context.Context, in *GetSignerSessionRequest, opts ...grpc.CallOption) (*GetSignerSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSignerSessionResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_GetSignerSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentWalletServiceClient) CloseSignerSession(ctx context.Context, in *CloseSignerSessionRequest, opts ...grpc.CallOption) (*CloseSignerSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CloseSignerSessionResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_CloseSignerSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentWalletServiceClient) PreviewRenewal(ctx context.Context, in *PreviewRenewalRequest, opts ...grpc.CallOption) (*PreviewRenewalResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PreviewRenewalResponse)
 	err := c.cc.Invoke(ctx, AgentWalletService_PreviewRenewal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentWalletServiceClient) SignPsbt(ctx context.Context, in *SignPsbtRequest, opts ...grpc.CallOption) (*SignPsbtResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignPsbtResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_SignPsbt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentWalletServiceClient) PublishTransaction(ctx context.Context, in *PublishTransactionRequest, opts ...grpc.CallOption) (*PublishTransactionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishTransactionResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_PublishTransaction_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,23 +222,41 @@ func (c *agentWalletServiceClient) GetOperation(ctx context.Context, in *GetOper
 	return out, nil
 }
 
+func (c *agentWalletServiceClient) ListOperations(ctx context.Context, in *ListOperationsRequest, opts ...grpc.CallOption) (*ListOperationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOperationsResponse)
+	err := c.cc.Invoke(ctx, AgentWalletService_ListOperations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentWalletServiceServer is the server API for AgentWalletService service.
 // All implementations must embed UnimplementedAgentWalletServiceServer
 // for forward compatibility.
 //
 // AgentWalletService defines a phase-1 programmatic API for AI agents and
 // human-facing CLI adapters. The initial scope covers wallet state, UTXO
-// inspection, expiry risk analysis, renewal planning/submission, persistent
-// reservations, and operation lookup.
+// inspection, expiry risk analysis, renewal planning/signing/publication,
+// persistent reservations, operation lookup, and audit history.
 type AgentWalletServiceServer interface {
 	GetWalletState(context.Context, *GetWalletStateRequest) (*GetWalletStateResponse, error)
 	ListUtxos(context.Context, *ListUtxosRequest) (*ListUtxosResponse, error)
 	GetExpiryRisk(context.Context, *GetExpiryRiskRequest) (*GetExpiryRiskResponse, error)
+	IssueCapability(context.Context, *IssueCapabilityRequest) (*IssueCapabilityResponse, error)
+	RevokeCapability(context.Context, *RevokeCapabilityRequest) (*RevokeCapabilityResponse, error)
+	OpenSignerSession(context.Context, *OpenSignerSessionRequest) (*OpenSignerSessionResponse, error)
+	GetSignerSession(context.Context, *GetSignerSessionRequest) (*GetSignerSessionResponse, error)
+	CloseSignerSession(context.Context, *CloseSignerSessionRequest) (*CloseSignerSessionResponse, error)
 	PreviewRenewal(context.Context, *PreviewRenewalRequest) (*PreviewRenewalResponse, error)
+	SignPsbt(context.Context, *SignPsbtRequest) (*SignPsbtResponse, error)
+	PublishTransaction(context.Context, *PublishTransactionRequest) (*PublishTransactionResponse, error)
 	SubmitRenewal(context.Context, *SubmitRenewalRequest) (*SubmitRenewalResponse, error)
 	ReserveUtxos(context.Context, *ReserveUtxosRequest) (*ReserveUtxosResponse, error)
 	ReleaseReservation(context.Context, *ReleaseReservationRequest) (*ReleaseReservationResponse, error)
 	GetOperation(context.Context, *GetOperationRequest) (*GetOperationResponse, error)
+	ListOperations(context.Context, *ListOperationsRequest) (*ListOperationsResponse, error)
 	mustEmbedUnimplementedAgentWalletServiceServer()
 }
 
@@ -172,8 +276,29 @@ func (UnimplementedAgentWalletServiceServer) ListUtxos(context.Context, *ListUtx
 func (UnimplementedAgentWalletServiceServer) GetExpiryRisk(context.Context, *GetExpiryRiskRequest) (*GetExpiryRiskResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetExpiryRisk not implemented")
 }
+func (UnimplementedAgentWalletServiceServer) IssueCapability(context.Context, *IssueCapabilityRequest) (*IssueCapabilityResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IssueCapability not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) RevokeCapability(context.Context, *RevokeCapabilityRequest) (*RevokeCapabilityResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeCapability not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) OpenSignerSession(context.Context, *OpenSignerSessionRequest) (*OpenSignerSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method OpenSignerSession not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) GetSignerSession(context.Context, *GetSignerSessionRequest) (*GetSignerSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSignerSession not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) CloseSignerSession(context.Context, *CloseSignerSessionRequest) (*CloseSignerSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CloseSignerSession not implemented")
+}
 func (UnimplementedAgentWalletServiceServer) PreviewRenewal(context.Context, *PreviewRenewalRequest) (*PreviewRenewalResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PreviewRenewal not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) SignPsbt(context.Context, *SignPsbtRequest) (*SignPsbtResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SignPsbt not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) PublishTransaction(context.Context, *PublishTransactionRequest) (*PublishTransactionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishTransaction not implemented")
 }
 func (UnimplementedAgentWalletServiceServer) SubmitRenewal(context.Context, *SubmitRenewalRequest) (*SubmitRenewalResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitRenewal not implemented")
@@ -186,6 +311,9 @@ func (UnimplementedAgentWalletServiceServer) ReleaseReservation(context.Context,
 }
 func (UnimplementedAgentWalletServiceServer) GetOperation(context.Context, *GetOperationRequest) (*GetOperationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOperation not implemented")
+}
+func (UnimplementedAgentWalletServiceServer) ListOperations(context.Context, *ListOperationsRequest) (*ListOperationsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListOperations not implemented")
 }
 func (UnimplementedAgentWalletServiceServer) mustEmbedUnimplementedAgentWalletServiceServer() {}
 func (UnimplementedAgentWalletServiceServer) testEmbeddedByValue()                            {}
@@ -262,6 +390,96 @@ func _AgentWalletService_GetExpiryRisk_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentWalletService_IssueCapability_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IssueCapabilityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).IssueCapability(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_IssueCapability_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).IssueCapability(ctx, req.(*IssueCapabilityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentWalletService_RevokeCapability_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeCapabilityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).RevokeCapability(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_RevokeCapability_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).RevokeCapability(ctx, req.(*RevokeCapabilityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentWalletService_OpenSignerSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OpenSignerSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).OpenSignerSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_OpenSignerSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).OpenSignerSession(ctx, req.(*OpenSignerSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentWalletService_GetSignerSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSignerSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).GetSignerSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_GetSignerSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).GetSignerSession(ctx, req.(*GetSignerSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentWalletService_CloseSignerSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloseSignerSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).CloseSignerSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_CloseSignerSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).CloseSignerSession(ctx, req.(*CloseSignerSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentWalletService_PreviewRenewal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PreviewRenewalRequest)
 	if err := dec(in); err != nil {
@@ -276,6 +494,42 @@ func _AgentWalletService_PreviewRenewal_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AgentWalletServiceServer).PreviewRenewal(ctx, req.(*PreviewRenewalRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentWalletService_SignPsbt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignPsbtRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).SignPsbt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_SignPsbt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).SignPsbt(ctx, req.(*SignPsbtRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentWalletService_PublishTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishTransactionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).PublishTransaction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_PublishTransaction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).PublishTransaction(ctx, req.(*PublishTransactionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -352,6 +606,24 @@ func _AgentWalletService_GetOperation_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentWalletService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOperationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentWalletServiceServer).ListOperations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentWalletService_ListOperations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentWalletServiceServer).ListOperations(ctx, req.(*ListOperationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentWalletService_ServiceDesc is the grpc.ServiceDesc for AgentWalletService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -372,8 +644,36 @@ var AgentWalletService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AgentWalletService_GetExpiryRisk_Handler,
 		},
 		{
+			MethodName: "IssueCapability",
+			Handler:    _AgentWalletService_IssueCapability_Handler,
+		},
+		{
+			MethodName: "RevokeCapability",
+			Handler:    _AgentWalletService_RevokeCapability_Handler,
+		},
+		{
+			MethodName: "OpenSignerSession",
+			Handler:    _AgentWalletService_OpenSignerSession_Handler,
+		},
+		{
+			MethodName: "GetSignerSession",
+			Handler:    _AgentWalletService_GetSignerSession_Handler,
+		},
+		{
+			MethodName: "CloseSignerSession",
+			Handler:    _AgentWalletService_CloseSignerSession_Handler,
+		},
+		{
 			MethodName: "PreviewRenewal",
 			Handler:    _AgentWalletService_PreviewRenewal_Handler,
+		},
+		{
+			MethodName: "SignPsbt",
+			Handler:    _AgentWalletService_SignPsbt_Handler,
+		},
+		{
+			MethodName: "PublishTransaction",
+			Handler:    _AgentWalletService_PublishTransaction_Handler,
 		},
 		{
 			MethodName: "SubmitRenewal",
@@ -390,6 +690,10 @@ var AgentWalletService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOperation",
 			Handler:    _AgentWalletService_GetOperation_Handler,
+		},
+		{
+			MethodName: "ListOperations",
+			Handler:    _AgentWalletService_ListOperations_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
