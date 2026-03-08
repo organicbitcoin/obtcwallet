@@ -1,4 +1,4 @@
-# 面向 AI Agent 的 OBTC 钱包接口设计（草案）
+# 面向 AI Agent 与命令行用户的 OBTC 钱包接口设计（草案）
 
 ## 1. 为什么 OBTC 应该优先面向 AI agent
 
@@ -15,6 +15,40 @@ OBTC 和传统 BTC 钱包有一个根本区别：资产不是“放着就行”�
 
 **一个面向 agent 的、带策略和授权边界的钱包操作系统。**
 
+但这里的“面向 agent”不等于“排斥人类”。
+
+更准确的目标应该是：
+
+- 同一套钱包内核，同时服务 AI 和人类
+- 人类优先通过 CLI 使用
+- 程序优先通过 gRPC / HTTP / PSBT / SDK 使用
+- GUI 可以以后再做，但不应反向决定钱包核心接口
+
+---
+
+## 1.1 双用户定位：一个内核，两类入口
+
+这套 `obtcwallet` 不应该分裂成：
+
+- 一套给 AI 的钱包
+- 一套给人类的命令行钱包
+
+正确方向应该是：
+
+- **一个共享内核**
+  - UTXO/账户/地址/expiry/renew/policy/signer/audit 都只实现一遍
+- **两类交互面**
+  - 人类：CLI
+  - 程序：gRPC / HTTP / PSBT / SDK
+
+这有三个直接好处：
+
+- 避免 AI 路径和人类路径规则漂移
+- 避免出现“两套续期逻辑、两套审计口径”
+- CLI 天然可以成为程序接口的薄封装，降低维护成本
+
+本文档不讨论 GUI，但明确要求：**必须提供程序接口，CLI 也应尽量基于同一套程序接口构建。**
+
 ---
 
 ## 2. 当前 `obtcwallet` 已有的基础能力
@@ -25,6 +59,9 @@ OBTC 和传统 BTC 钱包有一个根本区别：资产不是“放着就行”�
   - `rpc/api.proto`
   - `rpc/rpcserver/server.go`
   - 已有 `CreateWallet` / `OpenWallet` / `StartConsensusRpc`
+- 命令行入口：
+  - `cmd/renewall/main.go`
+  - 当前已经有面向人类操作员的 CLI 雏形
 - 密钥分层加密与内存清零：
   - `waddrmgr/manager.go`
   - `snacl/snacl.go`
@@ -196,35 +233,96 @@ AI 更适合：
 
 对 AI 钱包来说，审计不是附属功能，而是核心功能。
 
+### 4.6 One Core, Many Frontends
+
+未来实现上应坚持：
+
+- 钱包核心能力只实现一套
+- CLI 不直接绕开核心逻辑
+- 程序接口不是 CLI 的附属品，CLI 也不是程序接口的例外分支
+
+推荐关系是：
+
+- 核心域模型：wallet / signer / policy / audit
+- 标准程序接口：gRPC
+- 可选程序网关：HTTP/JSON
+- 人类入口：CLI，对标准程序接口做薄封装
+
+这样一来：
+
+- 人类和 AI 看到的是同一套操作语义
+- 审计、权限、策略、锁定、预演都能统一复用
+- 后续加 GUI 也不会破坏内核边界
+
 ---
 
 ## 5. 推荐架构
-
 ```text
-AI Agents
-   |
-   v
-Agent Wallet Gateway
-   |- Capability Service
-   |- Policy Engine
-   |- Expiry/Renew Planner
-   |- UTXO Reservation Manager
-   |- Audit Log
-   |
-   +--> Watch-Only Wallet State (xpub, utxo, tx, expiry, labels)
-   |
-   +--> Signer Service / HSM / TEE / KMS-backed enclave
-            |- generate seed
-            |- derive child keys
-            |- sign PSBT / sign intent
-            |- never expose seed to agent
+Human Operator (CLI)      AI Agents / Services
+         |                         |
+         +-----------+-------------+
+                     |
+                     v
+              Agent Wallet Gateway
+                 |- CLI Adapter
+                 |- gRPC / HTTP API
+                 |- Capability Service
+                 |- Policy Engine
+                 |- Expiry/Renew Planner
+                 |- UTXO Reservation Manager
+                 |- Audit Log
+                 |
+                 +--> Watch-Only Wallet State (xpub, utxo, tx, expiry, labels)
+                 |
+                 +--> Signer Service / HSM / TEE / KMS-backed enclave
+                          |- generate seed
+                          |- derive child keys
+                          |- sign PSBT / sign intent
+                          |- never expose seed to agent
 ```
 
-### 5.1 各层职责
+### 5.1 交互层划分
+
+`CLI`
+
+- 面向人类操作员
+- 用于查询、预演、审批、续期、恢复、巡检
+- 应尽量调用标准程序接口，而不是重新写一套逻辑
+
+`gRPC / HTTP API`
+
+- 面向 AI agent、后端服务、运维自动化、未来 GUI
+- 应该是长期稳定的主接口
+- 应提供结构化错误、幂等语义、操作状态查询
+
+`PSBT`
+
+- 不是独立产品界面
+- 而是规划层与签名层之间的标准交换格式
+
+### 5.2 为什么 CLI 也应纳入统一接口体系
+
+如果 CLI 直接调用一套特殊内部逻辑，而 AI 走另一套 RPC，最后一定会出现：
+
+- 人类能做、AI 不能做
+- AI 能预演、人类不能预演
+- 审计字段 CLI 缺失
+- capability 约束只在 AI 路径生效
+
+这会让钱包系统快速失控。
+
+所以更合理的做法是：
+
+- CLI 只是“面向人类的调用器”
+- 程序接口才是“能力定义的源头”
+- 两者共享 plan / sign / publish / audit / policy 语义
+
+### 5.3 各层职责
 
 `Agent Wallet Gateway`
 
 - 对外暴露 gRPC 或 HTTP API
+- 对 CLI 提供统一适配层
 - 做 capability 校验
 - 做 policy 检查
 - 生成 plan / PSBT / renewal proposal
@@ -368,6 +466,23 @@ Agent Wallet Gateway
 
 - 一个新的 gRPC 服务：`AgentWalletService`
 - 必要时再在其上面提供 HTTP/JSON gateway
+
+同时建议把命令行层明确纳入设计：
+
+- Legacy JSON-RPC：兼容层，逐步减少新增能力
+- gRPC：主程序接口
+- HTTP/JSON：可选网关，服务外部系统
+- CLI：人类入口，调用主程序接口
+
+### 7.0 接口面建议
+
+| 入口 | 目标用户 | 定位 |
+| --- | --- | --- |
+| Legacy JSON-RPC | 旧脚本、兼容调用方 | 兼容层 |
+| gRPC | AI agent、后端服务、未来 GUI | 主接口 |
+| HTTP/JSON gateway | Web 后端、轻量集成方 | 适配层 |
+| CLI | 人类操作员 | 一等入口，但应是薄封装 |
+| PSBT | signer 交换面 | 标准中间格式 |
 
 ### 7.1 生命周期接口
 
@@ -660,11 +775,11 @@ PSBT-first 的好处：
 
 ## 12. 一句话结论
 
-OBTC 面向 AI 的钱包，不应该只是“把人类钱包 RPC 给 AI 调用”。
+OBTC 的钱包，不应该拆成“AI 钱包”和“人类钱包”两套系统，也不应该只是“把人类钱包 RPC 给 AI 调用”。
 
 它应该演进成：
 
-**以 expiry 风险管理为核心、以 capability 为授权单位、以 PSBT 和 intent 为操作语义、以 signer 隔离和审计追踪为安全边界的 agent wallet system。**
+**以 expiry 风险管理为核心、以 capability 为授权单位、以 PSBT 和 intent 为操作语义、以 signer 隔离和审计追踪为安全边界，同时向 AI 和 CLI 人类用户提供统一能力模型的 wallet system。**
 
 如果只做“余额 + 地址 + sendtoaddress”，那只是把传统钱包接到了 AI 上；  
-如果做到“观察、规划、授权、签名、续期、审计、恢复”这整套分层，才真正是面向 AI 的 OBTC 钱包。
+如果做到“观察、规划、授权、签名、续期、审计、恢复”这整套分层，并让 CLI 与程序接口共用同一套核心语义，才真正是适合 OBTC 的钱包形态。
