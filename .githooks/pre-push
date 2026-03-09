@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-echo "[pre-push] running full test suite (go test ./... -count=1)..."
-go test ./... -count=1
+echo "[pre-push] running test suite (go test ./... -count=1, excluding chain/ which requires bitcoind)..."
+go test $(go list ./... | grep -v github.com/btcsuite/btcwallet/chain) -count=1
 
 echo "[pre-push] OK"
