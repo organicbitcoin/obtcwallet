@@ -243,12 +243,44 @@ func makeListeners(normalizedListenAddrs []string, listen listenFunc) []net.List
 // with a wallet to enable remote wallet access.  For the GRPC server, this
 // registers the WalletService service, and for the legacy JSON-RPC server it
 // enables methods that require a loaded wallet.
-func startWalletRPCServices(wallet *wallet.Wallet, server *grpc.Server, legacyServer *legacyrpc.Server) {
+func startWalletRPCServices(wallet *wallet.Wallet, server *grpc.Server, legacyServer *legacyrpc.Server) error {
 	if server != nil {
 		rpcserver.StartWalletService(server, wallet)
-		rpcserver.StartAgentWalletService(server, wallet)
+
+		agentOpts, err := buildAgentWalletOptions()
+		if err != nil {
+			return err
+		}
+		rpcserver.StartAgentWalletServiceWithOptions(server, wallet, agentOpts)
 	}
 	if legacyServer != nil {
 		legacyServer.RegisterWallet(wallet)
 	}
+
+	return nil
+}
+
+func buildAgentWalletOptions() (rpcserver.AgentWalletOptions, error) {
+	opts := rpcserver.AgentWalletOptions{}
+
+	if cfg == nil || cfg.AgentRemoteSignerAddress == "" {
+		return opts, nil
+	}
+
+	backend, err := rpcserver.NewRemoteAgentSignerBackendWithGRPCTransport(
+		rpcserver.GRPCRemoteSignerTransportConfig{
+			Address:       cfg.AgentRemoteSignerAddress,
+			TLSCertPath:   cfg.AgentRemoteSignerCAFile.Value,
+			TLSServerName: cfg.AgentRemoteSignerTLSServerName,
+			DisableTLS:    cfg.AgentRemoteSignerNoTLS,
+			AuthToken:     cfg.AgentRemoteSignerAuthToken,
+			DialTimeout:   cfg.AgentRemoteSignerDialTimeout,
+		},
+	)
+	if err != nil {
+		return rpcserver.AgentWalletOptions{}, err
+	}
+
+	opts.SignerBackend = backend
+	return opts, nil
 }

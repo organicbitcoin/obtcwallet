@@ -28,13 +28,14 @@ import (
 )
 
 const (
-	defaultCAFilename       = "btcd.cert"
-	defaultConfigFilename   = "btcwallet.conf"
-	defaultLogLevel         = "info"
-	defaultLogDirname       = "logs"
-	defaultLogFilename      = "btcwallet.log"
-	defaultRPCMaxClients    = 10
-	defaultRPCMaxWebsockets = 25
+	defaultCAFilename                   = "btcd.cert"
+	defaultConfigFilename               = "btcwallet.conf"
+	defaultLogLevel                     = "info"
+	defaultLogDirname                   = "logs"
+	defaultLogFilename                  = "btcwallet.log"
+	defaultAgentRemoteSignerDialTimeout = 5 * time.Second
+	defaultRPCMaxClients                = 10
+	defaultRPCMaxWebsockets             = 25
 )
 
 var (
@@ -125,6 +126,14 @@ type config struct {
 	// These options will change (and require changes to config files, etc.)
 	// when the new gRPC server is enabled.
 	ExperimentalRPCListeners []string `long:"experimentalrpclisten" description:"Listen for RPC connections on this interface/port"`
+
+	// Agent remote signer options
+	AgentRemoteSignerAddress       string                  `long:"agentremotesigneraddr" description:"Address of a remote signer gRPC server used by the experimental agent wallet signer backend"`
+	AgentRemoteSignerCAFile        *cfgutil.ExplicitString `long:"agentremotesignercafile" description:"File containing root certificates to authenticate the remote signer gRPC server"`
+	AgentRemoteSignerNoTLS         bool                    `long:"agentremotesignernotls" description:"Disable TLS for the remote signer gRPC client -- NOTE: This is only allowed if the remote signer is bound to localhost"`
+	AgentRemoteSignerTLSServerName string                  `long:"agentremotesignerservername" description:"Override the TLS server name used by the remote signer gRPC client"`
+	AgentRemoteSignerAuthToken     string                  `long:"agentremotesignerauthtoken" default-mask:"-" description:"Optional bearer token used for remote signer gRPC authentication"`
+	AgentRemoteSignerDialTimeout   time.Duration           `long:"agentremotesignerdialtimeout" description:"Timeout used when dialing the remote signer gRPC server"`
 
 	// Deprecated options
 	DataDir *cfgutil.ExplicitString `short:"b" long:"datadir" default-mask:"-" description:"DEPRECATED -- use appdata instead"`
@@ -331,6 +340,7 @@ func loadConfig() (*config, []string, error) {
 		LogDir:                        defaultLogDir,
 		WalletPass:                    wallet.InsecurePubPassphrase,
 		CAFile:                        cfgutil.NewExplicitString(""),
+		AgentRemoteSignerCAFile:       cfgutil.NewExplicitString(""),
 		RPCKey:                        cfgutil.NewExplicitString(defaultRPCKeyFile),
 		RPCCert:                       cfgutil.NewExplicitString(defaultRPCCertFile),
 		LegacyRPCMaxClients:           defaultRPCMaxClients,
@@ -354,6 +364,7 @@ func loadConfig() (*config, []string, error) {
 		AutoRenewMaxFeeRateSatPerKB:   defaultAutoRenewCfg.Policy.MaxFeeRateSatPerKB,
 		AutoRenewExpiryWindowBlocks:   defaultAutoRenewCfg.ExpiryWindowBlocks,
 		AutoRenewExpiringThreshold:    defaultAutoRenewCfg.ExpiringThresholdBlocks,
+		AgentRemoteSignerDialTimeout:  defaultAgentRemoteSignerDialTimeout,
 	}
 
 	// Pre-parse the command line options to see if an alternative config
@@ -776,10 +787,50 @@ func loadConfig() (*config, []string, error) {
 		}
 	}
 
+	if cfg.AgentRemoteSignerAddress != "" {
+		remoteSignerHost, _, err := net.SplitHostPort(
+			cfg.AgentRemoteSignerAddress,
+		)
+		if err != nil {
+			err = fmt.Errorf("remote signer address must be host:port: %v", err)
+			fmt.Fprintln(os.Stderr, err)
+			return nil, nil, err
+		}
+		if cfg.AgentRemoteSignerNoTLS {
+			if _, ok := localhostListeners[remoteSignerHost]; !ok {
+				remoteSignerIP := net.ParseIP(remoteSignerHost)
+				if remoteSignerIP == nil || !remoteSignerIP.IsLoopback() {
+					err = fmt.Errorf("the --agentremotesignernotls option may not be used when connecting to non localhost remote signer addresses: %s", cfg.AgentRemoteSignerAddress)
+					fmt.Fprintln(os.Stderr, err)
+					fmt.Fprintln(os.Stderr, usageMessage)
+					return nil, nil, err
+				}
+			}
+		}
+	}
+
 	// Expand environment variable and leading ~ for filepaths.
 	cfg.CAFile.Value = cleanAndExpandPath(cfg.CAFile.Value)
 	cfg.RPCCert.Value = cleanAndExpandPath(cfg.RPCCert.Value)
 	cfg.RPCKey.Value = cleanAndExpandPath(cfg.RPCKey.Value)
+	if cfg.AgentRemoteSignerCAFile.Value != "" {
+		cfg.AgentRemoteSignerCAFile.Value = cleanAndExpandPath(
+			cfg.AgentRemoteSignerCAFile.Value,
+		)
+		remoteSignerCAExists, err := cfgutil.FileExists(
+			cfg.AgentRemoteSignerCAFile.Value,
+		)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return nil, nil, err
+		}
+		if !remoteSignerCAExists {
+			err = fmt.Errorf("remote signer CA file does not exist: %s",
+				cfg.AgentRemoteSignerCAFile.Value)
+			fmt.Fprintln(os.Stderr, err)
+			return nil, nil, err
+		}
+	}
 
 	// If the btcd username or password are unset, use the same auth as for
 	// the client.  The two settings were previously shared for btcd and

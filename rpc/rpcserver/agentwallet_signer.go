@@ -17,11 +17,16 @@ import (
 // it without changing the agent execution API.
 type AgentSignerBackend interface {
 	Info() *pb.SignerBackendInfo
+	SignerProofMetadata() agentSignerProofMetadata
 	OpenSession(sessionID string, passphrase []byte, ttl time.Duration,
-		onExpire func()) error
-	CloseSession(sessionID string) error
+		reason string, onExpire func()) error
+	CloseSession(sessionID, reason string) error
 	ValidateSession(sessionID string) error
 	FinalizePsbt(sessionID string, account uint32, packet *psbt.Packet) error
+}
+
+type agentSignerProofMetadata struct {
+	RemoteEndpoint string
 }
 
 type localAgentSignerBackend struct {
@@ -53,8 +58,12 @@ func (b *localAgentSignerBackend) Info() *pb.SignerBackendInfo {
 	}
 }
 
+func (b *localAgentSignerBackend) SignerProofMetadata() agentSignerProofMetadata {
+	return agentSignerProofMetadata{}
+}
+
 func (b *localAgentSignerBackend) OpenSession(sessionID string,
-	passphrase []byte, ttl time.Duration, onExpire func()) error {
+	passphrase []byte, ttl time.Duration, _ string, onExpire func()) error {
 
 	if b.wallet.Manager.WatchOnly() {
 		return status.Error(codes.FailedPrecondition,
@@ -83,7 +92,7 @@ func (b *localAgentSignerBackend) OpenSession(sessionID string,
 		lock: lockChan,
 	}
 	control.timer = time.AfterFunc(ttl, func() {
-		_ = b.CloseSession(sessionID)
+		_ = b.CloseSession(sessionID, signerSessionCloseReasonExpired)
 		if onExpire != nil {
 			onExpire()
 		}
@@ -97,7 +106,7 @@ func (b *localAgentSignerBackend) OpenSession(sessionID string,
 	return nil
 }
 
-func (b *localAgentSignerBackend) CloseSession(sessionID string) error {
+func (b *localAgentSignerBackend) CloseSession(sessionID, _ string) error {
 	b.mu.Lock()
 	control, ok := b.controls[sessionID]
 	isActive := b.activeSessionID == sessionID
@@ -144,32 +153,30 @@ func (b *localAgentSignerBackend) FinalizePsbt(sessionID string,
 	return b.wallet.FinalizePsbt(nil, account, packet)
 }
 
-type RemoteAgentPsbtSigner interface {
-	FinalizePsbt(sessionID string, account uint32, packet *psbt.Packet) error
-}
-
 type remoteAgentSignerBackend struct {
-	signer RemoteAgentPsbtSigner
+	transport remoteAgentSignerTransport
 
 	mu       sync.Mutex
 	controls map[string]*agentSignerSessionControl
 }
 
 func newRemoteAgentSignerBackend(
-	signer RemoteAgentPsbtSigner) AgentSignerBackend {
+	transport remoteAgentSignerTransport) AgentSignerBackend {
 
 	return &remoteAgentSignerBackend{
-		signer:   signer,
-		controls: make(map[string]*agentSignerSessionControl),
+		transport: transport,
+		controls:  make(map[string]*agentSignerSessionControl),
 	}
 }
 
 func (b *remoteAgentSignerBackend) Info() *pb.SignerBackendInfo {
 	description := "remote signer backend; opens agent-managed signer " +
 		"sessions and can delegate PSBT signing to a remote signer transport"
-	if b.signer == nil {
+	if b.transport == nil {
 		description = "remote signer backend skeleton; remote signing " +
 			"transport is not configured, so signed PSBT must be provided externally"
+	} else if transportDescription := b.transport.Description(); transportDescription != "" {
+		description = transportDescription
 	}
 
 	return &pb.SignerBackendInfo{
@@ -182,8 +189,19 @@ func (b *remoteAgentSignerBackend) Info() *pb.SignerBackendInfo {
 	}
 }
 
+func (b *remoteAgentSignerBackend) SignerProofMetadata() agentSignerProofMetadata {
+	if b.transport == nil {
+		return agentSignerProofMetadata{}
+	}
+
+	return agentSignerProofMetadata{
+		RemoteEndpoint: b.transport.Endpoint(),
+	}
+}
+
 func (b *remoteAgentSignerBackend) OpenSession(sessionID string,
-	_ []byte, ttl time.Duration, onExpire func()) error {
+	passphrase []byte, ttl time.Duration, reason string,
+	onExpire func()) error {
 
 	b.mu.Lock()
 	if _, ok := b.controls[sessionID]; ok {
@@ -193,8 +211,17 @@ func (b *remoteAgentSignerBackend) OpenSession(sessionID string,
 	}
 
 	control := &agentSignerSessionControl{}
+
+	if b.transport != nil {
+		if err := b.transport.OpenSession(
+			sessionID, passphrase, ttl, reason,
+		); err != nil {
+			b.mu.Unlock()
+			return err
+		}
+	}
 	control.timer = time.AfterFunc(ttl, func() {
-		_ = b.CloseSession(sessionID)
+		_ = b.CloseSession(sessionID, signerSessionCloseReasonExpired)
 		if onExpire != nil {
 			onExpire()
 		}
@@ -205,7 +232,7 @@ func (b *remoteAgentSignerBackend) OpenSession(sessionID string,
 	return nil
 }
 
-func (b *remoteAgentSignerBackend) CloseSession(sessionID string) error {
+func (b *remoteAgentSignerBackend) CloseSession(sessionID, reason string) error {
 	b.mu.Lock()
 	control, ok := b.controls[sessionID]
 	if ok {
@@ -219,8 +246,11 @@ func (b *remoteAgentSignerBackend) CloseSession(sessionID string) error {
 	if control.timer != nil {
 		control.timer.Stop()
 	}
+	if b.transport == nil {
+		return nil
+	}
 
-	return nil
+	return b.transport.CloseSession(sessionID, reason)
 }
 
 func (b *remoteAgentSignerBackend) ValidateSession(sessionID string) error {
@@ -242,12 +272,12 @@ func (b *remoteAgentSignerBackend) FinalizePsbt(sessionID string,
 	if err := b.ValidateSession(sessionID); err != nil {
 		return err
 	}
-	if b.signer == nil {
+	if b.transport == nil {
 		return status.Error(codes.Unimplemented,
 			"remote signer transport is not configured; sign externally and use PublishTransaction")
 	}
 
-	return b.signer.FinalizePsbt(sessionID, account, packet)
+	return b.transport.FinalizePsbt(sessionID, account, packet)
 }
 
 type publishOnlyAgentSignerBackend struct{}
@@ -268,14 +298,18 @@ func (publishOnlyAgentSignerBackend) Info() *pb.SignerBackendInfo {
 	}
 }
 
+func (publishOnlyAgentSignerBackend) SignerProofMetadata() agentSignerProofMetadata {
+	return agentSignerProofMetadata{}
+}
+
 func (publishOnlyAgentSignerBackend) OpenSession(string, []byte,
-	time.Duration, func()) error {
+	time.Duration, string, func()) error {
 
 	return status.Error(codes.FailedPrecondition,
 		"signer backend does not support local signer sessions")
 }
 
-func (publishOnlyAgentSignerBackend) CloseSession(string) error {
+func (publishOnlyAgentSignerBackend) CloseSession(string, string) error {
 	return nil
 }
 

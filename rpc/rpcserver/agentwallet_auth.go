@@ -196,6 +196,7 @@ func (s *agentWalletServer) OpenSignerSession(_ context.Context,
 
 	if err := s.signerBackend.OpenSession(
 		sessionID, req.Passphrase, time.Duration(ttlSeconds)*time.Second,
+		req.Reason,
 		func() {
 			_, _ = s.closeSignerSessionInternal(
 				sessionID, signerSessionCloseReasonExpired,
@@ -210,7 +211,9 @@ func (s *agentWalletServer) OpenSignerSession(_ context.Context,
 	}
 
 	if err := s.persistence.putSignerSession(record); err != nil {
-		_ = s.signerBackend.CloseSession(sessionID)
+		_ = s.signerBackend.CloseSession(
+			sessionID, signerSessionCloseReasonServiceRestart,
+		)
 		return nil, status.Errorf(codes.Internal,
 			"failed to persist signer session: %v", err)
 	}
@@ -592,7 +595,7 @@ func (s *agentWalletServer) closeSignerSessionInternal(sessionID, reason string,
 	updated.UpdatedAtUnix = closedAtUnix
 
 	if signalLock {
-		if err := s.signerBackend.CloseSession(sessionID); err != nil {
+		if err := s.signerBackend.CloseSession(sessionID, reason); err != nil {
 			return cloneSignerSessionRecord(updated), err
 		}
 	}

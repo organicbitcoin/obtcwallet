@@ -107,7 +107,9 @@ func walletMain() error {
 	})
 
 	loader.RunAfterLoad(func(w *wallet.Wallet) {
-		startWalletRPCServices(w, rpcs, legacyRPCServer)
+		if err := startWalletRPCServices(w, rpcs, legacyRPCServer); err != nil {
+			log.Errorf("Failed to start wallet RPC services: %v", err)
+		}
 	})
 
 	if !cfg.NoInitialLoad {
