@@ -35,6 +35,7 @@ require (
 
 require (
 	github.com/aead/siphash v1.0.1 // indirect
+	github.com/btcsuite/btcd/v2transport v1.0.1 // indirect
 	github.com/btcsuite/go-socks v0.0.0-20170105172521-4720035b7bfd // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
 	github.com/decred/dcrd/lru v1.1.2 // indirect
@@ -54,6 +55,8 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/btcsuite/btcd => ../obtcd
 
 // If you change this please run `make lint` to see where else it needs to be
 // updated as well.
