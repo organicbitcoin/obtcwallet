@@ -47,6 +47,13 @@ const (
 	operationActionPreviewCreated = "preview_created"
 	operationActionPsbtSigned     = "psbt_signed"
 	operationActionTxPublished    = "transaction_published"
+
+	decisionLogStagePreview = "preview"
+	decisionLogStageSign    = "sign"
+	decisionLogStagePublish = "publish"
+
+	signerProofTypePsbtFinalize       = "psbt_finalize"
+	signerProofTypeExternalSignedPsbt = "external_signed_psbt"
 )
 
 // AgentExpiryPolicyProvider resolves the effective expiry policy used by the
@@ -97,6 +104,7 @@ type agentWalletServer struct {
 	nextOperationID     uint64
 	nextReservationID   uint64
 	nextEventID         uint64
+	nextDecisionLogID   uint64
 	nextCapabilityID    uint64
 	nextSignerSessionID uint64
 	operations          map[string]*pb.Operation
@@ -392,6 +400,11 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 
 	s.mu.Lock()
 	operationID := s.newOperationIDLocked()
+	policySnapshot := newPolicySnapshot(
+		policyVerdictFromExpiryRisks(expiryRisks), effectivePolicy,
+		expiryRisks, warnings, tipHeight, summary.TargetAmountSat,
+		summary.FeeRateSatPerKb, req.MinConfirmations, req.ReservationId,
+	)
 	op := &pb.Operation{
 		OperationId:   operationID,
 		Kind:          operationKindRenewPreview,
@@ -413,6 +426,7 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 		CreatorPrincipal:     req.GetMeta().GetPrincipal(),
 		CreatorCapabilityId:  req.GetMeta().GetCapabilityId(),
 		CreateIdempotencyKey: req.GetMeta().GetIdempotencyKey(),
+		LatestPolicySnapshot: clonePolicySnapshot(policySnapshot),
 		History: []*pb.OperationEvent{
 			s.newOperationEventLocked(
 				req.GetMeta(),
@@ -422,6 +436,22 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 				warnings,
 				"",
 				now,
+			),
+		},
+		DecisionLog: []*pb.DecisionLogEntry{
+			s.newDecisionLogEntryLocked(
+				req.GetMeta(), decisionLogStagePreview,
+				buildPreviewDecisionReasons(opSummaryDecisionContext{
+					outpointCount:      len(selectedOutpoints),
+					policySource:       effectivePolicy.Source,
+					reservationID:      req.ReservationId,
+					targetAmountSat:    summary.TargetAmountSat,
+					feeRateSatPerKB:    summary.FeeRateSatPerKb,
+					minConfirmations:   req.MinConfirmations,
+					targetAddress:      summary.TargetAddress,
+					walletDryRunNotice: true,
+				}),
+				warnings, tipHeight, "", nil, policySnapshot, now,
 			),
 		},
 	}
@@ -1148,17 +1178,35 @@ func (s *agentWalletServer) signRenewalOperation(operationID,
 
 	now := time.Now().Unix()
 	fromState := op.State
+	policyVerdict := policyVerdictFromExpiryRisks(expiryRisks)
+	policySnapshot := newPolicySnapshot(
+		policyVerdict, effectivePolicy, expiryRisks,
+		mergeWarnings(op.Warnings, warnings), tipHeight,
+		op.GetSummary().GetTargetAmountSat(), op.GetSummary().GetFeeRateSatPerKb(),
+		op.MinConfirmations, op.ReservationId,
+	)
+	signerProof := s.newSignerProof(
+		meta, signerSessionID, signerProofTypePsbtFinalize,
+		artifacts.UnsignedPsbt, signedPsbt, signedTx, now,
+	)
 	op.Kind = finalKind
 	op.State = operationStateSigned
-	op.PolicyVerdict = policyVerdictFromExpiryRisks(expiryRisks)
+	op.PolicyVerdict = policyVerdict
 	op.Warnings = mergeWarnings(op.Warnings, warnings)
 	op.UpdatedAtUnix = now
 	op.ExpiryRisks = cloneExpiryRisks(expiryRisks)
 	op.EffectivePolicy = toPBExpiryPolicy(effectivePolicy)
+	op.LatestPolicySnapshot = clonePolicySnapshot(policySnapshot)
+	op.LatestSignerProof = cloneSignerProof(signerProof)
 	s.mu.Lock()
 	op.History = append(op.History, s.newOperationEventLocked(
 		meta, operationActionPsbtSigned, fromState, operationStateSigned,
 		warnings, "", now,
+	))
+	op.DecisionLog = append(op.DecisionLog, s.newDecisionLogEntryLocked(
+		meta, decisionLogStageSign,
+		buildSignDecisionReasons(op, signerProof),
+		warnings, tipHeight, "", signerProof, policySnapshot, now,
 	))
 	s.mu.Unlock()
 
@@ -1314,19 +1362,40 @@ func (s *agentWalletServer) publishRenewalOperation(operationID string,
 
 	now := time.Now().Unix()
 	fromState := op.State
+	policyVerdict := policyVerdictFromExpiryRisks(expiryRisks)
+	policySnapshot := newPolicySnapshot(
+		policyVerdict, effectivePolicy, expiryRisks,
+		mergeWarnings(op.Warnings, warnings), tipHeight,
+		summary.TargetAmountSat, summary.FeeRateSatPerKb,
+		op.MinConfirmations, op.ReservationId,
+	)
+	signerProof := cloneSignerProof(op.LatestSignerProof)
+	if signerProof == nil || len(signedPsbtOverride) > 0 {
+		signerProof = s.newSignerProof(
+			meta, signerSessionID, signerProofTypeExternalSignedPsbt,
+			artifacts.UnsignedPsbt, normalizedSignedPsbt, rawTx, now,
+		)
+	}
 	op.Kind = finalKind
 	op.State = operationStatePublished
-	op.PolicyVerdict = policyVerdictFromExpiryRisks(expiryRisks)
+	op.PolicyVerdict = policyVerdict
 	op.Warnings = mergeWarnings(op.Warnings, warnings)
 	op.UpdatedAtUnix = now
 	op.Summary = cloneSummary(summary)
 	op.ExpiryRisks = cloneExpiryRisks(expiryRisks)
 	op.EffectivePolicy = toPBExpiryPolicy(effectivePolicy)
+	op.LatestPolicySnapshot = clonePolicySnapshot(policySnapshot)
+	op.LatestSignerProof = cloneSignerProof(signerProof)
 	op.Txid = tx.TxHash().String()
 	s.mu.Lock()
 	op.History = append(op.History, s.newOperationEventLocked(
 		meta, operationActionTxPublished, fromState, operationStatePublished,
 		warnings, op.Txid, now,
+	))
+	op.DecisionLog = append(op.DecisionLog, s.newDecisionLogEntryLocked(
+		meta, decisionLogStagePublish,
+		buildPublishDecisionReasons(op, len(signedPsbtOverride) > 0),
+		warnings, tipHeight, op.Txid, signerProof, policySnapshot, now,
 	))
 	s.mu.Unlock()
 
@@ -1572,6 +1641,12 @@ func (s *agentWalletServer) newEventIDLocked() string {
 	return fmt.Sprintf("evt_%d_%d", time.Now().UnixNano(), s.nextEventID)
 }
 
+func (s *agentWalletServer) newDecisionLogIDLocked() string {
+	s.nextDecisionLogID++
+	return fmt.Sprintf("dlg_%d_%d", time.Now().UnixNano(),
+		s.nextDecisionLogID)
+}
+
 func (s *agentWalletServer) newOperationEventLocked(meta *pb.RequestMeta,
 	action, fromState, toState string, warnings []string, txid string,
 	createdAtUnix int64) *pb.OperationEvent {
@@ -1588,6 +1663,176 @@ func (s *agentWalletServer) newOperationEventLocked(meta *pb.RequestMeta,
 		CreatedAtUnix: createdAtUnix,
 		Txid:          txid,
 	}
+}
+
+func (s *agentWalletServer) newDecisionLogEntryLocked(meta *pb.RequestMeta,
+	stage string, reasons, warnings []string, tipHeight int32, txid string,
+	signerProof *pb.SignerProof, policySnapshot *pb.PolicySnapshot,
+	createdAtUnix int64) *pb.DecisionLogEntry {
+
+	return &pb.DecisionLogEntry{
+		EntryId:         s.newDecisionLogIDLocked(),
+		Stage:           stage,
+		RequestId:       requestID(meta),
+		Principal:       meta.GetPrincipal(),
+		CapabilityId:    meta.GetCapabilityId(),
+		SignerSessionId: signerSessionIDFromProof(signerProof),
+		Verdict:         policySnapshotVerdict(policySnapshot),
+		Reasons:         append([]string(nil), reasons...),
+		Warnings:        append([]string(nil), warnings...),
+		TipHeight:       tipHeight,
+		Txid:            txid,
+		CreatedAtUnix:   createdAtUnix,
+		PolicySnapshot:  clonePolicySnapshot(policySnapshot),
+		SignerProof:     cloneSignerProof(signerProof),
+	}
+}
+
+func (s *agentWalletServer) newSignerProof(meta *pb.RequestMeta,
+	signerSessionID, proofType string, unsignedPsbt, signedPsbt,
+	signedTx []byte, signedAtUnix int64) *pb.SignerProof {
+
+	info := &pb.SignerBackendInfo{}
+	metadata := agentSignerProofMetadata{}
+	if s.signerBackend != nil {
+		info = s.signerBackend.Info()
+		metadata = s.signerBackend.SignerProofMetadata()
+	}
+
+	proof := &pb.SignerProof{
+		ProofId:            fmt.Sprintf("proof_%d_%s", signedAtUnix, proofType),
+		BackendId:          info.GetBackendId(),
+		BackendMode:        info.GetMode(),
+		BackendDescription: info.GetDescription(),
+		RemoteEndpoint:     metadata.RemoteEndpoint,
+		SignerSessionId:    signerSessionID,
+		CapabilityId:       meta.GetCapabilityId(),
+		Principal:          meta.GetPrincipal(),
+		ProofType:          proofType,
+		UnsignedPsbtSha256: sha256Hex(unsignedPsbt),
+		SignedPsbtSha256:   sha256Hex(signedPsbt),
+		SignedTxSha256:     sha256Hex(signedTx),
+		SignedAtUnix:       signedAtUnix,
+	}
+	if proof.BackendId == "" && proofType == signerProofTypeExternalSignedPsbt {
+		proof.BackendId = "external"
+		proof.BackendMode = "external"
+		proof.BackendDescription = "signed PSBT supplied externally"
+	}
+	return proof
+}
+
+type opSummaryDecisionContext struct {
+	outpointCount      int
+	policySource       string
+	reservationID      string
+	targetAmountSat    int64
+	feeRateSatPerKB    int64
+	minConfirmations   int32
+	targetAddress      string
+	walletDryRunNotice bool
+}
+
+func buildPreviewDecisionReasons(ctx opSummaryDecisionContext) []string {
+	reasons := []string{
+		fmt.Sprintf("selected_outpoints=%d", ctx.outpointCount),
+		fmt.Sprintf("policy_source=%s", ctx.policySource),
+		fmt.Sprintf("target_amount_sat=%d", ctx.targetAmountSat),
+		fmt.Sprintf("fee_rate_sat_per_kb=%d", ctx.feeRateSatPerKB),
+		fmt.Sprintf("min_confirmations=%d", ctx.minConfirmations),
+	}
+	if ctx.targetAddress != "" {
+		reasons = append(reasons,
+			fmt.Sprintf("target_address=%s", ctx.targetAddress))
+	}
+	if ctx.reservationID != "" {
+		reasons = append(reasons,
+			fmt.Sprintf("reservation_id=%s", ctx.reservationID))
+	}
+	if ctx.walletDryRunNotice {
+		reasons = append(reasons,
+			"preview_only=true")
+	}
+	return reasons
+}
+
+func buildSignDecisionReasons(op *pb.Operation,
+	signerProof *pb.SignerProof) []string {
+
+	if op == nil {
+		return nil
+	}
+
+	reasons := []string{
+		fmt.Sprintf("operation_state=%s", op.State),
+		fmt.Sprintf("policy_verdict=%s", op.PolicyVerdict),
+		fmt.Sprintf("expiry_items=%d", len(op.ExpiryRisks)),
+	}
+	if signerProof != nil {
+		reasons = append(reasons,
+			fmt.Sprintf("signer_backend=%s", signerProof.BackendId))
+		if signerProof.SignerSessionId != "" {
+			reasons = append(reasons,
+				fmt.Sprintf("signer_session_id=%s",
+					signerProof.SignerSessionId))
+		}
+	}
+	return reasons
+}
+
+func buildPublishDecisionReasons(op *pb.Operation,
+	overrideSignedPsbt bool) []string {
+
+	if op == nil {
+		return nil
+	}
+
+	reasons := []string{
+		fmt.Sprintf("operation_state=%s", op.State),
+		fmt.Sprintf("policy_verdict=%s", op.PolicyVerdict),
+	}
+	if overrideSignedPsbt {
+		reasons = append(reasons, "signed_psbt_source=request_override")
+	} else {
+		reasons = append(reasons, "signed_psbt_source=stored_artifact")
+	}
+	if op.ReservationId != "" {
+		reasons = append(reasons,
+			fmt.Sprintf("reservation_id=%s", op.ReservationId))
+	}
+	return reasons
+}
+
+func newPolicySnapshot(verdict string, effectivePolicy agentExpiryPolicy,
+	expiryRisks []*pb.ExpiryRisk, warnings []string, tipHeight int32,
+	targetAmountSat, feeRateSatPerKB int64, minConfirmations int32,
+	reservationID string) *pb.PolicySnapshot {
+
+	return &pb.PolicySnapshot{
+		Verdict:          verdict,
+		EffectivePolicy:  toPBExpiryPolicy(effectivePolicy),
+		ExpiryRisks:      cloneExpiryRisks(expiryRisks),
+		Warnings:         append([]string(nil), warnings...),
+		TipHeight:        tipHeight,
+		TargetAmountSat:  targetAmountSat,
+		FeeRateSatPerKb:  feeRateSatPerKB,
+		MinConfirmations: minConfirmations,
+		ReservationId:    reservationID,
+	}
+}
+
+func signerSessionIDFromProof(proof *pb.SignerProof) string {
+	if proof == nil {
+		return ""
+	}
+	return proof.SignerSessionId
+}
+
+func policySnapshotVerdict(snapshot *pb.PolicySnapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+	return snapshot.Verdict
 }
 
 func requestID(meta *pb.RequestMeta) string {
@@ -2019,6 +2264,9 @@ func cloneOperation(op *pb.Operation) *pb.Operation {
 	cp.ExpiryRisks = cloneExpiryRisks(op.ExpiryRisks)
 	cp.EffectivePolicy = cloneExpiryPolicy(op.EffectivePolicy)
 	cp.History = cloneOperationEvents(op.History)
+	cp.LatestPolicySnapshot = clonePolicySnapshot(op.LatestPolicySnapshot)
+	cp.LatestSignerProof = cloneSignerProof(op.LatestSignerProof)
+	cp.DecisionLog = cloneDecisionLogEntries(op.DecisionLog)
 	return &cp
 }
 
@@ -2071,6 +2319,56 @@ func cloneOperationEvents(items []*pb.OperationEvent) []*pb.OperationEvent {
 		cloned = append(cloned, &cp)
 	}
 	return cloned
+}
+
+func clonePolicySnapshot(snapshot *pb.PolicySnapshot) *pb.PolicySnapshot {
+	if snapshot == nil {
+		return nil
+	}
+
+	cp := *snapshot
+	cp.EffectivePolicy = cloneExpiryPolicy(snapshot.EffectivePolicy)
+	cp.ExpiryRisks = cloneExpiryRisks(snapshot.ExpiryRisks)
+	cp.Warnings = append([]string(nil), snapshot.Warnings...)
+	return &cp
+}
+
+func cloneSignerProof(proof *pb.SignerProof) *pb.SignerProof {
+	if proof == nil {
+		return nil
+	}
+
+	cp := *proof
+	return &cp
+}
+
+func cloneDecisionLogEntries(items []*pb.DecisionLogEntry) []*pb.DecisionLogEntry {
+	if len(items) == 0 {
+		return nil
+	}
+
+	cloned := make([]*pb.DecisionLogEntry, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			cloned = append(cloned, nil)
+			continue
+		}
+		cp := *item
+		cp.Reasons = append([]string(nil), item.Reasons...)
+		cp.Warnings = append([]string(nil), item.Warnings...)
+		cp.PolicySnapshot = clonePolicySnapshot(item.PolicySnapshot)
+		cp.SignerProof = cloneSignerProof(item.SignerProof)
+		cloned = append(cloned, &cp)
+	}
+	return cloned
+}
+
+func sha256Hex(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return fmt.Sprintf("%x", sum[:])
 }
 
 func parseOutPointStringsUnique(in []string) ([]wire.OutPoint, error) {

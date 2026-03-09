@@ -1,10 +1,158 @@
 package main
 
 import (
-	"encoding/json"
+	"bytes"
+	"context"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	pb "github.com/btcsuite/btcwallet/rpc/agentwalletrpc"
 )
+
+type fakeAgentWalletClient struct {
+	calls []string
+
+	getWalletStateReqs    []*pb.GetWalletStateRequest
+	getExpiryRiskReqs     []*pb.GetExpiryRiskRequest
+	issueCapabilityReqs   []*pb.IssueCapabilityRequest
+	revokeCapabilityReqs  []*pb.RevokeCapabilityRequest
+	openSignerSessionReqs []*pb.OpenSignerSessionRequest
+	closeSessionReqs      []*pb.CloseSignerSessionRequest
+	previewRenewalReqs    []*pb.PreviewRenewalRequest
+	submitRenewalReqs     []*pb.SubmitRenewalRequest
+
+	getWalletStateResp    *pb.GetWalletStateResponse
+	getWalletStateErr     error
+	getExpiryRiskResp     *pb.GetExpiryRiskResponse
+	getExpiryRiskErr      error
+	issueCapabilityResp   *pb.IssueCapabilityResponse
+	issueCapabilityErr    error
+	revokeCapabilityResp  *pb.RevokeCapabilityResponse
+	revokeCapabilityErr   error
+	openSignerSessionResp *pb.OpenSignerSessionResponse
+	openSignerSessionErr  error
+	closeSessionResp      *pb.CloseSignerSessionResponse
+	closeSessionErr       error
+	previewRenewalResp    *pb.PreviewRenewalResponse
+	previewRenewalErr     error
+	submitRenewalResp     *pb.SubmitRenewalResponse
+	submitRenewalErr      error
+}
+
+func (c *fakeAgentWalletClient) GetWalletState(_ context.Context,
+	req *pb.GetWalletStateRequest) (*pb.GetWalletStateResponse, error) {
+
+	c.calls = append(c.calls, "GetWalletState")
+	c.getWalletStateReqs = append(c.getWalletStateReqs, req)
+	return c.getWalletStateResp, c.getWalletStateErr
+}
+
+func (c *fakeAgentWalletClient) GetExpiryRisk(_ context.Context,
+	req *pb.GetExpiryRiskRequest) (*pb.GetExpiryRiskResponse, error) {
+
+	c.calls = append(c.calls, "GetExpiryRisk")
+	c.getExpiryRiskReqs = append(c.getExpiryRiskReqs, req)
+	return c.getExpiryRiskResp, c.getExpiryRiskErr
+}
+
+func (c *fakeAgentWalletClient) IssueCapability(_ context.Context,
+	req *pb.IssueCapabilityRequest) (*pb.IssueCapabilityResponse, error) {
+
+	c.calls = append(c.calls, "IssueCapability")
+	c.issueCapabilityReqs = append(c.issueCapabilityReqs, req)
+	return c.issueCapabilityResp, c.issueCapabilityErr
+}
+
+func (c *fakeAgentWalletClient) RevokeCapability(_ context.Context,
+	req *pb.RevokeCapabilityRequest) (*pb.RevokeCapabilityResponse, error) {
+
+	c.calls = append(c.calls, "RevokeCapability")
+	c.revokeCapabilityReqs = append(c.revokeCapabilityReqs, req)
+	return c.revokeCapabilityResp, c.revokeCapabilityErr
+}
+
+func (c *fakeAgentWalletClient) OpenSignerSession(_ context.Context,
+	req *pb.OpenSignerSessionRequest) (*pb.OpenSignerSessionResponse, error) {
+
+	c.calls = append(c.calls, "OpenSignerSession")
+	c.openSignerSessionReqs = append(c.openSignerSessionReqs,
+		cloneOpenSignerSessionRequest(req))
+	return c.openSignerSessionResp, c.openSignerSessionErr
+}
+
+func (c *fakeAgentWalletClient) CloseSignerSession(_ context.Context,
+	req *pb.CloseSignerSessionRequest) (*pb.CloseSignerSessionResponse, error) {
+
+	c.calls = append(c.calls, "CloseSignerSession")
+	c.closeSessionReqs = append(c.closeSessionReqs, req)
+	return c.closeSessionResp, c.closeSessionErr
+}
+
+func (c *fakeAgentWalletClient) PreviewRenewal(_ context.Context,
+	req *pb.PreviewRenewalRequest) (*pb.PreviewRenewalResponse, error) {
+
+	c.calls = append(c.calls, "PreviewRenewal")
+	c.previewRenewalReqs = append(c.previewRenewalReqs, req)
+	return c.previewRenewalResp, c.previewRenewalErr
+}
+
+func (c *fakeAgentWalletClient) SubmitRenewal(_ context.Context,
+	req *pb.SubmitRenewalRequest) (*pb.SubmitRenewalResponse, error) {
+
+	c.calls = append(c.calls, "SubmitRenewal")
+	c.submitRenewalReqs = append(c.submitRenewalReqs, req)
+	return c.submitRenewalResp, c.submitRenewalErr
+}
+
+func cloneOpenSignerSessionRequest(
+	req *pb.OpenSignerSessionRequest) *pb.OpenSignerSessionRequest {
+
+	if req == nil {
+		return nil
+	}
+
+	cloned := *req
+	if req.Meta != nil {
+		meta := *req.Meta
+		cloned.Meta = &meta
+	}
+	cloned.Passphrase = append([]byte(nil), req.Passphrase...)
+	return &cloned
+}
+
+func useTestOpts(t *testing.T) {
+	t.Helper()
+
+	saved := opts
+	t.Cleanup(func() {
+		opts = saved
+	})
+
+	opts.RPCConnect = "localhost:8332"
+	opts.RPCCertificate = ""
+	opts.DisableTLS = true
+	opts.WalletPass = ""
+	opts.Principal = defaultPrincipal
+	opts.WalletID = defaultWalletID
+	opts.AccountNumber = 0
+	opts.CapabilityTTL = defaultCapabilityTTLSeconds
+	opts.SessionTTL = defaultSessionTTLSeconds
+	opts.Label = ""
+	opts.Amount = 0.01
+	opts.FetchLimit = 1000
+	opts.BatchLimit = 10
+	opts.IncludeExpired = false
+	opts.TargetAddress = ""
+	opts.MaxFeeRate = 0
+	opts.MinConf = 0
+	opts.DryRun = false
+	opts.WindowStart = -1
+	opts.WindowEnd = -1
+	opts.Interval = ""
+	opts.Runs = 1
+}
 
 func TestShouldRenewDirect(t *testing.T) {
 	if !shouldRenew("expiring", false) {
@@ -103,30 +251,281 @@ func TestParseLoopConfigDirect(t *testing.T) {
 	}
 }
 
-func TestBuildRenewParamMessagesDirect(t *testing.T) {
-	params := buildRenewParamMessages("abc:1", 0.01, "", 0, 2)
-	if len(params) != 5 {
-		t.Fatalf("unexpected params len: %d", len(params))
+func TestRunRenewAllOnceDryRunUsesAgentRiskQuery(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = true
+	opts.BatchLimit = 1
+
+	filter, err := newRenewFilter(false, -1, -1)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
 	}
-	var outpoints []string
-	if err := json.Unmarshal(params[0], &outpoints); err != nil {
-		t.Fatalf("decode outpoints: %v", err)
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId: opts.WalletID,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "expiring:0", Status: "expiring", BlocksToExpiry: 12},
+				{Outpoint: "expired:0", Status: "expired", BlocksToExpiry: -2},
+			},
+		},
 	}
-	if len(outpoints) != 1 || outpoints[0] != "abc:1" {
-		t.Fatalf("bad outpoints param: %v", outpoints)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := runRenewAllOnce(client, filter, &stdout, &stderr); err != nil {
+		t.Fatalf("runRenewAllOnce: %v", err)
 	}
-	var target *string
-	if err := json.Unmarshal(params[2], &target); err != nil {
-		t.Fatalf("decode target: %v", err)
+
+	if got := stdout.String(); !strings.Contains(got, "selected 1 outpoints:\nexpiring:0\n") {
+		t.Fatalf("unexpected stdout: %q", got)
 	}
-	if target != nil {
-		t.Fatalf("expected nil target when empty")
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+
+	wantCalls := []string{"GetWalletState", "GetExpiryRisk"}
+	if !reflect.DeepEqual(client.calls, wantCalls) {
+		t.Fatalf("unexpected call order: got %v want %v", client.calls, wantCalls)
+	}
+	if len(client.previewRenewalReqs) != 0 || len(client.submitRenewalReqs) != 0 {
+		t.Fatalf("dry-run should not preview or submit renewals")
 	}
 }
 
-func TestMustRawDirect(t *testing.T) {
-	r := mustRaw(map[string]int{"a": 1})
-	if len(r) == 0 {
-		t.Fatalf("mustRaw should return non-empty json")
+func TestRunRenewAllOnceExecutesViaAgentFlow(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = false
+	opts.WalletPass = "topsecret"
+	opts.AccountNumber = 7
+	opts.BatchLimit = 1
+	opts.Label = "renewall-agent"
+
+	filter, err := newRenewFilter(false, -1, -1)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId: opts.WalletID,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "abc:1", Status: "expiring", BlocksToExpiry: 15},
+				{Outpoint: "def:0", Status: "expiring", BlocksToExpiry: 10},
+			},
+		},
+		issueCapabilityResp: &pb.IssueCapabilityResponse{
+			Meta: &pb.ResponseMeta{},
+			Capability: &pb.Capability{
+				CapabilityId: "cap-1",
+			},
+		},
+		openSignerSessionResp: &pb.OpenSignerSessionResponse{
+			Meta: &pb.ResponseMeta{},
+			Session: &pb.SignerSession{
+				SignerSessionId: "sess-1",
+			},
+		},
+		previewRenewalResp: &pb.PreviewRenewalResponse{
+			Meta: &pb.ResponseMeta{},
+			Operation: &pb.Operation{
+				OperationId: "op-1",
+			},
+		},
+		submitRenewalResp: &pb.SubmitRenewalResponse{
+			Meta: &pb.ResponseMeta{},
+			Operation: &pb.Operation{
+				OperationId: "op-1",
+			},
+			Txid: "tx-1",
+		},
+		closeSessionResp: &pb.CloseSignerSessionResponse{
+			Meta: &pb.ResponseMeta{},
+		},
+		revokeCapabilityResp: &pb.RevokeCapabilityResponse{
+			Meta: &pb.ResponseMeta{},
+		},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := runRenewAllOnce(client, filter, &stdout, &stderr); err != nil {
+		t.Fatalf("runRenewAllOnce: %v", err)
+	}
+
+	wantCalls := []string{
+		"GetWalletState",
+		"GetExpiryRisk",
+		"IssueCapability",
+		"OpenSignerSession",
+		"PreviewRenewal",
+		"SubmitRenewal",
+		"CloseSignerSession",
+		"RevokeCapability",
+	}
+	if !reflect.DeepEqual(client.calls, wantCalls) {
+		t.Fatalf("unexpected call order: got %v want %v", client.calls, wantCalls)
+	}
+
+	if len(client.issueCapabilityReqs) != 1 {
+		t.Fatalf("expected one IssueCapability request, got %d",
+			len(client.issueCapabilityReqs))
+	}
+	if got := client.issueCapabilityReqs[0].GetPermissions(); !reflect.DeepEqual(got,
+		[]string{"renewal.submit"}) {
+
+		t.Fatalf("unexpected capability permissions: %v", got)
+	}
+
+	if len(client.openSignerSessionReqs) != 1 {
+		t.Fatalf("expected one OpenSignerSession request, got %d",
+			len(client.openSignerSessionReqs))
+	}
+	if got := string(client.openSignerSessionReqs[0].GetPassphrase()); got != "topsecret" {
+		t.Fatalf("unexpected passphrase: %q", got)
+	}
+	if got := client.openSignerSessionReqs[0].GetCapabilityId(); got != "cap-1" {
+		t.Fatalf("unexpected open session capability id: %q", got)
+	}
+
+	if len(client.previewRenewalReqs) != 1 {
+		t.Fatalf("expected one PreviewRenewal request, got %d",
+			len(client.previewRenewalReqs))
+	}
+	previewReq := client.previewRenewalReqs[0]
+	if got := previewReq.GetOutpoints(); !reflect.DeepEqual(got, []string{"abc:1"}) {
+		t.Fatalf("unexpected preview outpoints: %v", got)
+	}
+	if got := previewReq.GetAccountNumber(); got != 7 {
+		t.Fatalf("unexpected preview account number: %d", got)
+	}
+	if got := previewReq.GetTargetAmountSat(); got != 1_000_000 {
+		t.Fatalf("unexpected preview target amount: %d", got)
+	}
+	if got := previewReq.GetMeta().GetCapabilityId(); got != "cap-1" {
+		t.Fatalf("unexpected preview capability id: %q", got)
+	}
+
+	if len(client.submitRenewalReqs) != 1 {
+		t.Fatalf("expected one SubmitRenewal request, got %d",
+			len(client.submitRenewalReqs))
+	}
+	submitReq := client.submitRenewalReqs[0]
+	if got := submitReq.GetOperationId(); got != "op-1" {
+		t.Fatalf("unexpected submit operation id: %q", got)
+	}
+	if got := submitReq.GetSignerSessionId(); got != "sess-1" {
+		t.Fatalf("unexpected submit signer session id: %q", got)
+	}
+	if got := submitReq.GetLabel(); got != "renewall-agent" {
+		t.Fatalf("unexpected submit label: %q", got)
+	}
+	if got := submitReq.GetMeta().GetCapabilityId(); got != "cap-1" {
+		t.Fatalf("unexpected submit capability id: %q", got)
+	}
+
+	if len(client.closeSessionReqs) != 1 || len(client.revokeCapabilityReqs) != 1 {
+		t.Fatalf("expected close/revoke on successful execution")
+	}
+
+	if got := stdout.String(); !strings.Contains(got,
+		"[1/1] renewed abc:1 txid=tx-1 operation_id=op-1\n") {
+
+		t.Fatalf("unexpected stdout: %q", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestRunRenewAllOnceRejectsPublishOnlySignerBackend(t *testing.T) {
+	useTestOpts(t)
+
+	filter, err := newRenewFilter(false, -1, -1)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId: opts.WalletID,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "publish_only",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "abc:1", Status: "expiring", BlocksToExpiry: 15},
+			},
+		},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = runRenewAllOnce(client, filter, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "publish_only signer backend") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(client.issueCapabilityReqs) != 0 || len(client.previewRenewalReqs) != 0 {
+		t.Fatalf("publish_only path should stop before capability or preview")
+	}
+}
+
+func TestRunRenewAllOnceLocalSignerRequiresWalletPass(t *testing.T) {
+	useTestOpts(t)
+
+	filter, err := newRenewFilter(false, -1, -1)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId: opts.WalletID,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "abc:1", Status: "expiring", BlocksToExpiry: 15},
+			},
+		},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = runRenewAllOnce(client, filter, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "walletpass is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(client.issueCapabilityReqs) != 0 || len(client.openSignerSessionReqs) != 0 {
+		t.Fatalf("local path without walletpass should stop before session open")
 	}
 }

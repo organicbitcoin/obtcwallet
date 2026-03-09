@@ -56,6 +56,34 @@ func TestAgentWalletPersistentStoreRoundTrip(t *testing.T) {
 			ProjectedReclaimRatioBps: 7000,
 			Source:                   "chaincfg",
 		},
+		LatestPolicySnapshot: &pb.PolicySnapshot{
+			Verdict: "ok",
+			EffectivePolicy: &pb.ExpiryPolicy{
+				WindowBlocks: 100,
+				Source:       "chaincfg",
+			},
+			Warnings:         []string{"snapshot warning"},
+			TipHeight:        120,
+			TargetAmountSat:  1234,
+			FeeRateSatPerKb:  99,
+			MinConfirmations: 1,
+			ReservationId:    "res_1",
+			ExpiryRisks:      []*pb.ExpiryRisk{{Outpoint: "txid:0"}},
+		},
+		LatestSignerProof: &pb.SignerProof{
+			ProofId:            "proof_1",
+			BackendId:          "remote",
+			BackendMode:        "remote",
+			RemoteEndpoint:     "127.0.0.1:10009",
+			SignerSessionId:    "sess_1",
+			CapabilityId:       "cap_1",
+			Principal:          "agent:bot",
+			ProofType:          signerProofTypePsbtFinalize,
+			UnsignedPsbtSha256: "u1",
+			SignedPsbtSha256:   "s1",
+			SignedTxSha256:     "t1",
+			SignedAtUnix:       102,
+		},
 		History: []*pb.OperationEvent{{
 			EventId:       "evt_1",
 			Action:        operationActionPreviewCreated,
@@ -65,6 +93,24 @@ func TestAgentWalletPersistentStoreRoundTrip(t *testing.T) {
 			CapabilityId:  "cap_1",
 			Warnings:      []string{"preview warning"},
 			CreatedAtUnix: 101,
+		}},
+		DecisionLog: []*pb.DecisionLogEntry{{
+			EntryId:       "dlg_1",
+			Stage:         decisionLogStagePreview,
+			RequestId:     "req_1",
+			Principal:     "agent:bot",
+			CapabilityId:  "cap_1",
+			Verdict:       "ok",
+			Reasons:       []string{"selected_outpoints=1"},
+			Warnings:      []string{"preview warning"},
+			TipHeight:     120,
+			CreatedAtUnix: 101,
+			PolicySnapshot: &pb.PolicySnapshot{
+				Verdict: "ok",
+			},
+			SignerProof: &pb.SignerProof{
+				ProofId: "proof_1",
+			},
 		}},
 	}
 	originalReservation := &agentReservationRecord{
@@ -141,6 +187,19 @@ func TestAgentWalletPersistentStoreRoundTrip(t *testing.T) {
 		loadedOp.GetHistory()[0].GetAction() != operationActionPreviewCreated {
 
 		t.Fatalf("unexpected loaded history: %#v", loadedOp.GetHistory())
+	}
+	if loadedOp.GetLatestPolicySnapshot().GetReservationId() != "res_1" {
+		t.Fatalf("unexpected loaded latest policy snapshot: %#v",
+			loadedOp.GetLatestPolicySnapshot())
+	}
+	if loadedOp.GetLatestSignerProof().GetRemoteEndpoint() != "127.0.0.1:10009" {
+		t.Fatalf("unexpected loaded latest signer proof: %#v",
+			loadedOp.GetLatestSignerProof())
+	}
+	if len(loadedOp.GetDecisionLog()) != 1 ||
+		loadedOp.GetDecisionLog()[0].GetEntryId() != "dlg_1" {
+		t.Fatalf("unexpected loaded decision log: %#v",
+			loadedOp.GetDecisionLog())
 	}
 
 	loadedReservation, ok := reservations["res_1"]

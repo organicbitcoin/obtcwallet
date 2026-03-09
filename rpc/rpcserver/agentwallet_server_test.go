@@ -28,8 +28,12 @@ func (b *testSignerBackend) Info() *pb.SignerBackendInfo {
 	}
 }
 
+func (b *testSignerBackend) SignerProofMetadata() agentSignerProofMetadata {
+	return agentSignerProofMetadata{}
+}
+
 func (b *testSignerBackend) OpenSession(sessionID string, _ []byte,
-	_ time.Duration, _ func()) error {
+	_ time.Duration, _ string, _ func()) error {
 
 	if b.activeSessions == nil {
 		b.activeSessions = make(map[string]struct{})
@@ -42,7 +46,7 @@ func (b *testSignerBackend) OpenSession(sessionID string, _ []byte,
 	return nil
 }
 
-func (b *testSignerBackend) CloseSession(sessionID string) error {
+func (b *testSignerBackend) CloseSession(sessionID, _ string) error {
 	if b.activeSessions != nil {
 		delete(b.activeSessions, sessionID)
 	}
@@ -359,6 +363,34 @@ func TestCloneOperationClonesEffectivePolicy(t *testing.T) {
 			Warnings:      []string{"history warning"},
 			CreatedAtUnix: 100,
 		}},
+		LatestPolicySnapshot: &pb.PolicySnapshot{
+			Verdict:  "ok",
+			Warnings: []string{"snapshot warning"},
+			EffectivePolicy: &pb.ExpiryPolicy{
+				WindowBlocks: 100,
+			},
+			ExpiryRisks: []*pb.ExpiryRisk{{Outpoint: "snap:0"}},
+		},
+		LatestSignerProof: &pb.SignerProof{
+			ProofId:          "proof_1",
+			BackendId:        "remote",
+			SignerSessionId:  "sess_1",
+			SignedPsbtSha256: "abc",
+		},
+		DecisionLog: []*pb.DecisionLogEntry{{
+			EntryId:   "dlg_1",
+			Stage:     decisionLogStageSign,
+			Reasons:   []string{"reason"},
+			Warnings:  []string{"decision warning"},
+			Verdict:   "ok",
+			TipHeight: 123,
+			PolicySnapshot: &pb.PolicySnapshot{
+				Verdict: "ok",
+			},
+			SignerProof: &pb.SignerProof{
+				ProofId: "proof_1",
+			},
+		}},
 	}
 
 	cloned := cloneOperation(original)
@@ -367,6 +399,9 @@ func TestCloneOperationClonesEffectivePolicy(t *testing.T) {
 	cloned.ExpiryRisks[0].Outpoint = "mutated"
 	cloned.EffectivePolicy.Source = "override"
 	cloned.History[0].Warnings[0] = "changed history"
+	cloned.LatestPolicySnapshot.Warnings[0] = "changed snapshot"
+	cloned.LatestSignerProof.SignedPsbtSha256 = "def"
+	cloned.DecisionLog[0].Reasons[0] = "changed reason"
 
 	if original.Warnings[0] != "warning" {
 		t.Fatalf("warnings were not cloned")
@@ -382,6 +417,15 @@ func TestCloneOperationClonesEffectivePolicy(t *testing.T) {
 	}
 	if original.History[0].Warnings[0] != "history warning" {
 		t.Fatalf("history was not cloned")
+	}
+	if original.LatestPolicySnapshot.Warnings[0] != "snapshot warning" {
+		t.Fatalf("latest policy snapshot was not cloned")
+	}
+	if original.LatestSignerProof.SignedPsbtSha256 != "abc" {
+		t.Fatalf("latest signer proof was not cloned")
+	}
+	if original.DecisionLog[0].Reasons[0] != "reason" {
+		t.Fatalf("decision log was not cloned")
 	}
 }
 

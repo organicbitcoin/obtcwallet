@@ -28,7 +28,7 @@ func TestPublishOnlyAgentSignerBackendRejectsLocalSigning(t *testing.T) {
 	backend := newPublishOnlyAgentSignerBackend()
 
 	if err := backend.OpenSession("sess_1", []byte("secret"),
-		time.Minute, nil); err == nil {
+		time.Minute, "test", nil); err == nil {
 		t.Fatalf("expected OpenSession to fail")
 	}
 	if err := backend.ValidateSession("sess_1"); err == nil {
@@ -60,7 +60,7 @@ func TestRemoteAgentSignerBackendInfo(t *testing.T) {
 func TestRemoteAgentSignerBackendSessionLifecycle(t *testing.T) {
 	backend := newRemoteAgentSignerBackend(nil)
 
-	if err := backend.OpenSession("sess_1", nil, time.Minute, nil); err != nil {
+	if err := backend.OpenSession("sess_1", nil, time.Minute, "test", nil); err != nil {
 		t.Fatalf("OpenSession error: %v", err)
 	}
 	if err := backend.ValidateSession("sess_1"); err != nil {
@@ -69,7 +69,7 @@ func TestRemoteAgentSignerBackendSessionLifecycle(t *testing.T) {
 	if err := backend.FinalizePsbt("sess_1", 0, nil); err == nil {
 		t.Fatalf("expected FinalizePsbt to fail without remote transport")
 	}
-	if err := backend.CloseSession("sess_1"); err != nil {
+	if err := backend.CloseSession("sess_1", "test"); err != nil {
 		t.Fatalf("CloseSession error: %v", err)
 	}
 	if err := backend.ValidateSession("sess_1"); err == nil {

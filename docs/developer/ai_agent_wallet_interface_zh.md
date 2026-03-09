@@ -800,8 +800,18 @@ REORGED
 - `creator_capability_id`
 - `create_idempotency_key`
 - `history[]`
+- `latest_policy_snapshot`
+- `latest_signer_proof`
+- `decision_log[]`
 
-这意味着 phase-1 已经能记录“谁创建了操作、谁触发了签名/广播、状态如何迁移、当时有哪些 warning、最终广播出的 txid 是什么”。但它仍然只是最小闭环，还不是完整的策略决策证据系统。
+这意味着当前版本已经不只记录“状态怎么变了”，还会记录：
+
+- 预演/签名/广播时看到的 policy snapshot
+- 当时采用的 verdict、warning、tip height、min confirmations
+- 由哪个 signer backend、哪个 signer session 产出的 signer proof
+- unsigned PSBT / signed PSBT / signed tx 的摘要指纹
+
+也就是说，phase-1 现在已经有最小可用的 decision log / signer proof 闭环；但它仍然不是最终形态，因为 attestation、HSM key handle、设备证明和远端 signer 回执还没有纳入模型。
 
 当前 phase-1.5 还新增了最小 capability / signer session 约束：
 
@@ -809,13 +819,13 @@ REORGED
 - `OpenSignerSession` / `CloseSignerSession` 把本地 signer 从“裸 `wallet.Unlock`”收敛成显式会话
 - `SignPsbt` / `SubmitRenewal` 现在要求 `capability_id + signer_session_id`
 - `PublishTransaction` 现在要求 `capability_id`，并可选绑定 `signer_session_id`
-- signer runtime 已经被抽象成 backend interface，当前已有 `local`、`publish_only`、`remote` 三种 backend
+- signer runtime 已经被抽象成 backend interface，当前已有 `local`、`publish_only`、`remote` 三种 backend；`remote` 已接入最小可用的 gRPC transport
 
 其中当前 backend 语义是：
 
 - `local`：可打开本地 signer session，并在 session 内完成 `SignPsbt`
 - `publish_only`：不提供本地 signer session，只接受外部 signer 返回的 signed PSBT，再通过 `PublishTransaction` 广播
-- `remote`：已落 skeleton，可打开 agent 侧 signer session；若远端 signer transport 尚未接通，则仍需外部 signer 产出 signed PSBT，再走 `PublishTransaction`
+- `remote`：当前可通过 `RemoteSignerService` gRPC transport 打开远端 signer session、远端完成 `FinalizePsbt`，也支持通过 `authorization` bearer token 做最小认证
 - `GetWalletState` 已会返回 `signer_backend` 元数据，供 AI/CLI 判断当前应走哪条执行路径
 
 但要明确一点：底层本地 signer 目前仍然复用 wallet 的全局 unlock 语义，因此当前实现只支持一个 active local signer session。这是兼容性过渡层，不是最终的多 signer backend 形态。
@@ -917,13 +927,13 @@ message PreviewRenewalResponse {
 
 | CLI 命令 | 建议映射 API | 说明 |
 | --- | --- | --- |
-| `renewall --dry-run ...` | `GetExpiryRisk` + `PreviewRenewal` | 查询并预演，不签名 |
-| `renewall ...` | `GetExpiryRisk` + `PreviewRenewal` + `SignPsbt` + `PublishTransaction` | 当前 phase-1 更推荐的执行闭环 |
+| `renewall --dry-run ...` | `GetWalletState` + `GetExpiryRisk` | 当前实现先做候选筛选并输出 outpoint，不触发签名或广播 |
+| `renewall ...` | `GetWalletState` + `GetExpiryRisk` + `IssueCapability` + `OpenSignerSession` + `PreviewRenewal` + `SubmitRenewal` | 当前 CLI 已切到 agent gRPC 路径，`SubmitRenewal` 作为兼容包装器内部继续复用 `SignPsbt` + `PublishTransaction` 语义 |
 | `walletpassphrase` | 不直接暴露为长期主接口 | 未来更适合 session/capability |
 | `walletlock` | `CloseSignerSession` 或 `RevokeCapability` 的兼容实现 | 收敛到 signer/session 模型 |
 | `getnewaddress` | `NextAddress` 或未来 `CreateAddressIntent` | 保持兼容 |
-| `obtc.getexpiry` | `GetExpiryRisk` | 逐步迁移 |
-| `obtc.renew` | `PreviewRenewal` + `SignPsbt` + `PublishTransaction` | 当前更适合先迁到 preview-first |
+| `obtc.getexpiry` | `GetExpiryRisk` | 已可继续收敛到 agent 语义 |
+| `obtc.renew` | `PreviewRenewal` + `SignPsbt` + `PublishTransaction` | legacy 语义仍存在，但主执行路径已不再是唯一入口 |
 
 这样做的含义不是删除 CLI，而是让 CLI 变成：
 
@@ -1085,9 +1095,9 @@ PSBT-first 的好处：
 
 1. `LockOutpoint` / `UnlockOutpoint` 仍然只是进程内锁；agent 路径应统一基于 `LeaseOutput` / `ReleaseOutput`，当前 phase-1 已按这个方向实现。
 2. `ConfigureAutoRenew` 当前是进程内配置，不是持久化策略对象。
-3. `obtc.getexpiry` / `obtc.renew` 仍然是 legacy RPC 语义；虽然 agent gRPC 已有 `GetExpiryRisk` / `IssueCapability` / `OpenSignerSession` / `PreviewRenewal` / `SignPsbt` / `PublishTransaction` / `SubmitRenewal` / `GetOperation` / `ListOperations`，而且 `operation` / `reservation` / `capability` / `signer_session` 元数据已经落到 walletdb、支持重启恢复，并带有最小可用的 history 审计轨迹，但完整 decision log 和真正可用的 remote/HSM signer transport 还没有闭环。
-4. 当前 signer runtime 已经被抽成 backend interface，并且已有 `local`、`publish_only`、`remote` 三种 backend；不过 `remote` 目前还是 transport skeleton，`local` 底层仍然复用 wallet 的全局 unlock 语义，所以本地模式只支持一个 active session。
-5. expiry 参数已经被抽象成共享 resolver，并支持 `OBTC_CHAINCFG_PATH` / `OBTC_EXPIRY_NETWORK`；但这仍然属于“runtime source resolution”，不是直接链接 obtcd module 的最终形态。
+3. `obtc.getexpiry` / `obtc.renew` 仍然保留 legacy RPC 语义；但 `cmd/renewall` 已经切到 agent gRPC 路径，当前通过 `GetWalletState` / `GetExpiryRisk` / `IssueCapability` / `OpenSignerSession` / `PreviewRenewal` / `SubmitRenewal` 执行续期，并继承 `operation` / `capability` / `signer_session` / `decision_log` / `latest_signer_proof` 这套新审计语义。
+4. 当前 signer runtime 已经被抽成 backend interface，并且已有 `local`、`publish_only`、`remote` 三种 backend；其中 `remote` 现已支持最小可用的 gRPC transport，可通过 `RemoteSignerService` 把 signer session open/close 和 `FinalizePsbt` 委托给远端 signer / HSM 代理，但 attestation、设备证明、策略回执还没有纳入 signer proof。
+5. expiry 参数已经直接链接到 `obtcd` 的 `chaincfg.GetExpiryParams()`；文档前文提到的 runtime source resolver 现在已经是历史阶段，不再是当前主路径。
 
 ### 11.2 建议的最小实现顺序
 
@@ -1105,21 +1115,20 @@ PSBT-first 的好处：
 
 下一步更合理的顺序是：
 
-1. 把当前 runtime resolver 升级成直接链接 obtcd module 的真实链参数来源，移除对文件路径和环境变量的依赖
-2. 在现有 `remote` backend skeleton 上接通真实 remote signer / HSM signer transport，而不只是停留在模式识别和 session 壳层
-3. 给 `operation` 增加更完整的决策证据对象，例如 decision log / policy snapshot / signer proof，而不只是当前状态迁移 history
-4. 给 CLI 增加一个直接走 agent gRPC 的路径
-5. 最后再考虑把 legacy `obtc.renew` 重定向到新执行链路
+1. 在 remote signer transport 之上增加更强的 signer 证据模型，例如 HSM key handle、attestation、设备证明、远端 signer receipt
+2. 把 `decision_log` 从当前字符串 `reasons[]` 升级成更强的结构化策略证据对象
+3. 继续把其他 CLI/自动化入口迁到 agent gRPC，而不是只迁 `renewall`
+4. 最后再考虑把 legacy `obtc.renew` 重定向到新执行链路
 
 ### 11.3 CLI 改造策略
 
-CLI 不建议一次性重写。
+CLI 不建议一次性重写，但 `cmd/renewall` 已经完成第一条主路径迁移。
 
 更稳妥的办法是：
 
-- 第一步：保留现有 CLI 行为
-- 第二步：给 CLI 增加 `--use-agent-api` 或内部默认切到新 gRPC
-- 第三步：等新接口稳定后，把 CLI 的主要逻辑迁出 legacy JSON-RPC
+- 第一步：选一个高价值 CLI 先切到 agent gRPC，验证 capability / signer session / operation 审计链路
+- 第二步：保留 CLI 交互表面不变，但让内部默认走新 gRPC
+- 第三步：等新接口稳定后，把其他 CLI 的主要逻辑迁出 legacy JSON-RPC
 
 这样可以把迁移风险压到最低。
 

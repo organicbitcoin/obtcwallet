@@ -184,6 +184,51 @@ message OperationEvent {
     string txid = 10;
 }
 
+message PolicySnapshot {
+    string verdict = 1;
+    ExpiryPolicy effective_policy = 2;
+    repeated ExpiryRisk expiry_risks = 3;
+    repeated string warnings = 4;
+    int32 tip_height = 5;
+    int64 target_amount_sat = 6;
+    int64 fee_rate_sat_per_kb = 7;
+    int32 min_confirmations = 8;
+    string reservation_id = 9;
+}
+
+message SignerProof {
+    string proof_id = 1;
+    string backend_id = 2;
+    string backend_mode = 3;
+    string backend_description = 4;
+    string remote_endpoint = 5;
+    string signer_session_id = 6;
+    string capability_id = 7;
+    string principal = 8;
+    string proof_type = 9;
+    string unsigned_psbt_sha256 = 10;
+    string signed_psbt_sha256 = 11;
+    string signed_tx_sha256 = 12;
+    int64 signed_at_unix = 13;
+}
+
+message DecisionLogEntry {
+    string entry_id = 1;
+    string stage = 2;
+    string request_id = 3;
+    string principal = 4;
+    string capability_id = 5;
+    string signer_session_id = 6;
+    string verdict = 7;
+    repeated string reasons = 8;
+    repeated string warnings = 9;
+    int32 tip_height = 10;
+    string txid = 11;
+    int64 created_at_unix = 12;
+    PolicySnapshot policy_snapshot = 13;
+    SignerProof signer_proof = 14;
+}
+
 message Operation {
     string operation_id = 1;
     string kind = 2;
@@ -205,6 +250,9 @@ message Operation {
     string creator_capability_id = 18;
     string create_idempotency_key = 19;
     repeated OperationEvent history = 20;
+    PolicySnapshot latest_policy_snapshot = 21;
+    SignerProof latest_signer_proof = 22;
+    repeated DecisionLogEntry decision_log = 23;
 }
 
 message PreviewRenewalRequest {

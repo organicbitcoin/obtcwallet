@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package remotesignerrpc;
+
+option go_package = "github.com/btcsuite/btcwallet/rpc/remotesignerrpc;remotesignerrpc";
+
+// RemoteSignerService defines the minimal transport required by the agent
+// wallet's remote signer backend. The agent wallet keeps capability/policy
+// enforcement locally and delegates only signer session lifecycle and PSBT
+// finalization to the remote signer.
+service RemoteSignerService {
+    rpc OpenSession (OpenSessionRequest) returns (OpenSessionResponse);
+    rpc CloseSession (CloseSessionRequest) returns (CloseSessionResponse);
+    rpc FinalizePsbt (FinalizePsbtRequest) returns (FinalizePsbtResponse);
+}
+
+message OpenSessionRequest {
+    string session_id = 1;
+    bytes auth = 2;
+    int64 ttl_seconds = 3;
+    string reason = 4;
+}
+
+message OpenSessionResponse {
+    int64 expires_at_unix = 1;
+}
+
+message CloseSessionRequest {
+    string session_id = 1;
+    string reason = 2;
+}
+
+message CloseSessionResponse {}
+
+message FinalizePsbtRequest {
+    string session_id = 1;
+    uint32 account_number = 2;
+    bytes unsigned_psbt = 3;
+}
+
+message FinalizePsbtResponse {
+    bytes signed_psbt = 1;
+}
