@@ -1,4 +1,7 @@
 btcwallet
+dropwtxmgr
+renewall
+sweepaccount
 vendor
 .idea
 coverage.txt
