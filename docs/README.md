@@ -16,6 +16,10 @@ Information for contributors and developers working on `btcwallet`. This include
 
 **[➡️ Go to Developer Guides](./developer/)**
 
+New in this area:
+
+- **[OBTCWallet 新人代码阅读指南（中文）](./developer/newcomer_reading_guide_zh.md)**
+
 OBTC-specific design draft:
 
 - **[面向 AI Agent 的 OBTC 钱包接口设计（草案）](./developer/ai_agent_wallet_interface_zh.md)**
