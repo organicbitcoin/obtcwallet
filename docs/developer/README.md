@@ -36,6 +36,14 @@ A deep dive into the core design philosophy, architectural patterns, and Go impl
 
 ---
 
+## 🧭 Newcomer Guide
+
+A detailed Chinese reading guide for developers who need to understand `obtcwallet` from startup flow to OBTC expiry, renew, and agent features.
+
+**[➡️ Read the Newcomer Reading Guide](./newcomer_reading_guide_zh.md)**
+
+---
+
 ## 🤖 OBTC / AI Wallet
 
 Design notes for evolving `obtcwallet` from a human-operated wallet into a capability-driven, expiry-aware wallet system for AI agents.
