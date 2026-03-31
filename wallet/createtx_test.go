@@ -6,6 +6,7 @@ package wallet
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 	"time"
 
@@ -171,6 +172,12 @@ func TestTxToOutputsDryRun(t *testing.T) {
 // addUtxo add the given transaction to the wallet's database marked as a
 // confirmed UTXO .
 func addUtxo(t *testing.T, w *Wallet, incomingTx *wire.MsgTx) {
+	addUtxoAtHeight(t, w, incomingTx, testBlockHeight)
+}
+
+func addUtxoAtHeight(t *testing.T, w *Wallet, incomingTx *wire.MsgTx,
+	blockHeight int32) {
+
 	var b bytes.Buffer
 	if err := incomingTx.Serialize(&b); err != nil {
 		t.Fatalf("unable to serialize tx: %v", err)
@@ -182,15 +189,7 @@ func addUtxo(t *testing.T, w *Wallet, incomingTx *wire.MsgTx) {
 		t.Fatalf("unable to create tx record: %v", err)
 	}
 
-	// The block meta will be inserted to tell the wallet this is a
-	// confirmed transaction.
-	block := &wtxmgr.BlockMeta{
-		Block: wtxmgr.Block{
-			Hash:   *testBlockHash,
-			Height: testBlockHeight,
-		},
-		Time: time.Unix(1387737310, 0),
-	}
+	block := makeTestBlockMeta(blockHeight)
 
 	if err := walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
 		ns := tx.ReadWriteBucket(wtxmgrNamespaceKey)
@@ -228,13 +227,7 @@ func addTxAndCredit(t *testing.T, w *Wallet, tx *wire.MsgTx,
 
 	// The block meta will be inserted to tell the wallet this is a
 	// confirmed transaction.
-	block := &wtxmgr.BlockMeta{
-		Block: wtxmgr.Block{
-			Hash:   *testBlockHash,
-			Height: testBlockHeight,
-		},
-		Time: time.Unix(1387737310, 0),
-	}
+	block := makeTestBlockMeta(testBlockHeight)
 
 	err = walletdb.Update(w.db, func(dbTx walletdb.ReadWriteTx) error {
 		ns := dbTx.ReadWriteBucket(wtxmgrNamespaceKey)
@@ -252,6 +245,19 @@ func addTxAndCredit(t *testing.T, w *Wallet, tx *wire.MsgTx,
 		return nil
 	})
 	require.NoError(t, err, "failed inserting tx")
+}
+
+func makeTestBlockMeta(height int32) *wtxmgr.BlockMeta {
+	hash := chainhash.Hash{}
+	binary.LittleEndian.PutUint32(hash[:4], uint32(height))
+
+	return &wtxmgr.BlockMeta{
+		Block: wtxmgr.Block{
+			Hash:   hash,
+			Height: height,
+		},
+		Time: time.Unix(1387737310, 0),
+	}
 }
 
 // TestInputYield verifies the functioning of the inputYieldsPositively.
@@ -593,4 +599,48 @@ func TestSelectUtxosTxoToOutpoint(t *testing.T) {
 			require.Len(t, tx1.Tx.TxOut, 2)
 		})
 	}
+}
+
+func TestTxToOutputsSkipsExpiredOBTCUtxos(t *testing.T) {
+	t.Parallel()
+
+	w, cleanup := testWallet(t)
+	defer cleanup()
+
+	const tipHeight = int32(241)
+	setWalletSyncedTo(t, w, tipHeight)
+
+	addr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0084)
+	require.NoError(t, err)
+
+	pkScript, err := txscript.PayToAddrScript(addr)
+	require.NoError(t, err)
+
+	w.chainParams = &chaincfg.ObtcRegTestParams
+	w.chainClient = &mockChainClient{
+		blockStamp: &waddrmgr.BlockStamp{Height: tipHeight},
+	}
+
+	expiredTx := &wire.MsgTx{
+		TxIn:  []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{wire.NewTxOut(7_000_000, pkScript)},
+	}
+	liveTx := &wire.MsgTx{
+		TxIn:  []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{wire.NewTxOut(3_000_000, pkScript)},
+	}
+
+	addUtxoAtHeight(t, w, expiredTx, 98)
+	addUtxoAtHeight(t, w, liveTx, 99)
+
+	tx, err := w.txToOutputs(
+		[]*wire.TxOut{{PkScript: pkScript, Value: 2_000_000}},
+		nil, nil, 0, 1, 1000, CoinSelectionLargest, true,
+		nil, alwaysAllowUtxo,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+	require.Len(t, tx.Tx.TxIn, 1)
+	require.Equal(t, liveTx.TxHash(), tx.Tx.TxIn[0].PreviousOutPoint.Hash)
+	require.EqualValues(t, 0, tx.Tx.TxIn[0].PreviousOutPoint.Index)
 }

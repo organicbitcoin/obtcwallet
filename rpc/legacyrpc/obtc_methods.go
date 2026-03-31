@@ -137,6 +137,7 @@ func getExpiry(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	outputs, err := w.UnspentOutputs(wallet.OutputSelectionPolicy{
 		Account:               waddrmgr.DefaultAccountNum,
 		RequiredConfirmations: 0,
+		IncludeExpired:        true,
 	})
 	if err != nil {
 		return nil, err

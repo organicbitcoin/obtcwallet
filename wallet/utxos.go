@@ -30,6 +30,7 @@ var (
 type OutputSelectionPolicy struct {
 	Account               uint32
 	RequiredConfirmations int32
+	IncludeExpired        bool
 }
 
 func (p *OutputSelectionPolicy) meetsRequiredConfs(txHeight,
@@ -59,6 +60,11 @@ func (w *Wallet) UnspentOutputs(policy OutputSelectionPolicy) ([]*TransactionOut
 			// Ignore outputs that haven't reached the required
 			// number of confirmations.
 			if !policy.meetsRequiredConfs(output.Height, syncBlock.Height) {
+				continue
+			}
+			if !policy.IncludeExpired &&
+				IsExpiredForSpending(w.chainParams, output.Height, syncBlock.Height) {
+
 				continue
 			}
 

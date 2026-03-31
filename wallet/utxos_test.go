@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -91,6 +93,66 @@ func TestFetchInputInfo(t *testing.T) {
 		t.Fatalf("unexpected number of confirmations, got %d wanted %d",
 			confirmations, 0-testBlockHeight)
 	}
+}
+
+func TestSpendableViewsSkipExpiredOBTCUtxos(t *testing.T) {
+	t.Parallel()
+
+	w, cleanup := testWallet(t)
+	defer cleanup()
+
+	const tipHeight = int32(241)
+	setWalletSyncedTo(t, w, tipHeight)
+
+	addr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0084)
+	require.NoError(t, err)
+
+	pkScript, err := txscript.PayToAddrScript(addr)
+	require.NoError(t, err)
+
+	w.chainParams = &chaincfg.ObtcRegTestParams
+
+	expiredTx := &wire.MsgTx{
+		TxIn:  []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{wire.NewTxOut(7_000_000, pkScript)},
+	}
+	liveTx := &wire.MsgTx{
+		TxIn:  []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{wire.NewTxOut(3_000_000, pkScript)},
+	}
+
+	addUtxoAtHeight(t, w, expiredTx, 98)
+	addUtxoAtHeight(t, w, liveTx, 99)
+
+	outputs, err := w.UnspentOutputs(OutputSelectionPolicy{
+		Account:               0,
+		RequiredConfirmations: 0,
+	})
+	require.NoError(t, err)
+	require.Len(t, outputs, 1)
+	require.EqualValues(t, 99, outputs[0].ContainingBlock.Height)
+
+	outputsWithExpired, err := w.UnspentOutputs(OutputSelectionPolicy{
+		Account:               0,
+		RequiredConfirmations: 0,
+		IncludeExpired:        true,
+	})
+	require.NoError(t, err)
+	require.Len(t, outputsWithExpired, 2)
+
+	balance, err := w.CalculateBalance(0)
+	require.NoError(t, err)
+	require.Equal(t, btcutil.Amount(3_000_000), balance)
+
+	accountBalances, err := w.CalculateAccountBalances(0, 0)
+	require.NoError(t, err)
+	require.Equal(t, btcutil.Amount(10_000_000), accountBalances.Total)
+	require.Equal(t, btcutil.Amount(3_000_000), accountBalances.Spendable)
+
+	listUnspent, err := w.ListUnspent(0, 9999999, "")
+	require.NoError(t, err)
+	require.Len(t, listUnspent, 1)
+	require.Equal(t, liveTx.TxHash().String(), listUnspent[0].TxID)
 }
 
 // TestFetchOutpointInfo checks that the wallet can gather information about an
