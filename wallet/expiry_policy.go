@@ -5,16 +5,15 @@ import (
 )
 
 const (
-	// CompatibilityExpiryWindowBlocks is the conservative fallback used when
-	// no OBTC-aware source is available (e.g. plain Bitcoin networks).
+	// CompatibilityExpiryWindowBlocks is the fallback used when chaincfg does
+	// not provide expiry parameters.
 	CompatibilityExpiryWindowBlocks uint64 = 3679200
 
-	// CompatibilityDustThresholdSat is the fallback dust threshold used when
-	// no OBTC-aware source is available.
+	// CompatibilityDustThresholdSat is the fallback dust threshold.
 	CompatibilityDustThresholdSat int64 = 546
 
 	// DefaultProjectedReclaimRatioBps is the default reclaim ratio used by
-	// wallet-side expiry UX and planning layers.
+	// wallet-side expiry planning.
 	DefaultProjectedReclaimRatioBps uint32 = 7000
 
 	maxDefaultExpiringThresholdBlocks int32 = 144 * 180
@@ -30,10 +29,7 @@ type ResolvedExpiryPolicy struct {
 	Source                   string
 }
 
-// ResolveExpiryPolicy resolves wallet-side expiry parameters from the current
-// chain parameters. For OBTC networks it directly reads the canonical values
-// from chaincfg.GetExpiryParams(). For non-OBTC networks it returns
-// conservative compatibility defaults.
+// ResolveExpiryPolicy resolves wallet-side expiry parameters from chaincfg.
 func ResolveExpiryPolicy(params *chaincfg.Params) (ResolvedExpiryPolicy, []string) {
 	policy := ResolvedExpiryPolicy{
 		ProjectedReclaimRatioBps: DefaultProjectedReclaimRatioBps,

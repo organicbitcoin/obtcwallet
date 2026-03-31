@@ -136,7 +136,7 @@ func upgradeToVersion5(ns walletdb.ReadWriteBucket) error {
 			if row.addrType > adtScript {
 				return fmt.Errorf("segwit address exists in " +
 					"wallet, can't upgrade from v4 to " +
-					"v5: well, we tried  ¯\\_(ツ)_/¯")
+					"v5: migration cannot continue safely")
 			}
 			return nil
 		})

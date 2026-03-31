@@ -56,14 +56,12 @@ const (
 	signerProofTypeExternalSignedPsbt = "external_signed_psbt"
 )
 
-// AgentExpiryPolicyProvider resolves the effective expiry policy used by the
-// agent-facing API. The default implementation prefers a real OBTC chaincfg
-// source when available and otherwise falls back to built-in/default values.
+// AgentExpiryPolicyProvider resolves the expiry policy used by the agent API.
 type AgentExpiryPolicyProvider interface {
 	PolicyForWallet(wallet *wallet.Wallet) (agentExpiryPolicy, []string, error)
 }
 
-// AgentWalletOptions configures the agent-oriented gRPC service.
+// AgentWalletOptions configures the agent gRPC service.
 type AgentWalletOptions struct {
 	ExpiryPolicyProvider AgentExpiryPolicyProvider
 	SignerBackend        AgentSignerBackend
@@ -116,15 +114,12 @@ type agentWalletServer struct {
 	persistenceLoadErr  error
 }
 
-// StartAgentWalletService registers the phase-1 AgentWalletService on the
-// experimental gRPC server. This service shares the same wallet core as the
-// human-facing CLI and legacy interfaces.
+// StartAgentWalletService registers AgentWalletService on the gRPC server.
 func StartAgentWalletService(server *grpc.Server, wallet *wallet.Wallet) {
 	StartAgentWalletServiceWithOptions(server, wallet, AgentWalletOptions{})
 }
 
-// StartAgentWalletServiceWithOptions registers the agent wallet gRPC service
-// with explicit service options.
+// StartAgentWalletServiceWithOptions registers the agent wallet gRPC service.
 func StartAgentWalletServiceWithOptions(server *grpc.Server,
 	wallet *wallet.Wallet, opts AgentWalletOptions) {
 
