@@ -71,7 +71,6 @@ type config struct {
 	// Wallet options
 	WalletPass string `long:"walletpass" default-mask:"-" description:"The public wallet password -- Only required if the wallet was created with one"`
 
-	// OBTC auto-renew options
 	AutoRenewEnabled              bool          `long:"autorenew" description:"Enable OBTC auto-renew scheduler"`
 	AutoRenewInterval             time.Duration `long:"autorenewinterval" description:"Interval between auto-renew runs"`
 	AutoRenewFailureBackoff       time.Duration `long:"autorenewfailurebackoff" description:"Backoff duration after failed auto-renew runs (0 to disable)"`

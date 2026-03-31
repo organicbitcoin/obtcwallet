@@ -1,80 +1,71 @@
 # AGENTS.md
 
-
-## 结构总览（obtcwallet 当前建议）
+## Structure Overview
 
 ```
 obtcwallet/ (repo root)
-  btcwallet.go          # 主程序入口
-  config.go             # 配置与参数解析
-  rpcserver.go          # 钱包 RPC 服务入口
+  btcwallet.go          # main entry point
+  config.go             # configuration and argument parsing
+  rpcserver.go          # wallet RPC entry point
 
-  wallet/               # 核心钱包逻辑（Phase 5 主要落位）
+  wallet/               # core wallet logic
     (planned)
-    expiry.go           # 到期状态计算/筛选
-    renew.go            # 续期交易构造与提交
-    policy.go           # 自动续期策略（可选）
+    expiry.go           # expiry status calculation and filtering
+    renew.go            # renewal transaction construction and submission
+    policy.go           # optional auto-renew policy
 
-  waddrmgr/             # 地址管理（密钥/账户/地址）
-  wtxmgr/               # 交易历史与 UTXO 管理
-  walletdb/             # 钱包数据库抽象
+  waddrmgr/             # address, key, and account management
+  wtxmgr/               # transaction history and UTXO management
+  walletdb/             # wallet database abstraction
 
-  rpc/                  # RPC 相关结构与子模块
+  rpc/                  # RPC-related modules
     (planned)
     obtc/               # obtc.getexpiry / obtc.renew
 
-  cmd/                  # 命令行程序
+  cmd/                  # command-line programs
     dropwtxmgr/
     sweepaccount/
     (planned)
-    renew-all/          # 批量续期入口
+    renew-all/          # batch renewal entry point
 
-  chain/                # 链后端交互（与全节点通信）
-  netparams/            # 网络参数适配
-  internal/             # 内部通用模块
+  chain/                # chain backend integration
+  netparams/            # network parameter adapters
+  internal/             # internal shared modules
 
   docs/
     phase5_execution_plan.md
     phase5_execution_plan_zh.md
-    phase5-validation.md      # Phase 5 验证记录（待补）
+    phase5-validation.md
 
-  scripts/              # 辅助脚本
-  build/                # 构建与发布辅助资源
+  scripts/              # helper scripts
+  build/                # build and release assets
 ```
 
-## 说明
+## Notes
 
-- 上述结构为“建议落位”，已实现与规划项混合在一起，便于对照阶段计划（phase）。
-- 若实际目录不同，以仓库现状为准，可在此文件同步更新。
-- 新增模块尽量按功能归类，避免在顶层堆积零散文件。
+- The layout above is a recommended placement guide and mixes implemented and planned work.
+- If the live repository layout differs, treat the repository state as the source of truth and update this file when needed.
+- Keep new modules grouped by responsibility instead of adding unrelated files at the repository root.
 
-## Git 工作指导
+## Git Workflow
 
-- 默认流程：`新分支 -> 开发 -> 本地测试 -> commit -> push -> PR -> merge`。
-- 非紧急情况不要直接推 `master`；优先通过 PR 合入。
-- 分支命名建议：
-  - `feat/...` 功能
-  - `fix/...` 修复
-  - `test/...` 测试增强
-  - `docs/...` 文档更新
-  - `chore/...` 工程与维护
-- commit message 使用英文，建议前缀：`feat:` / `fix:` / `test:` / `docs:` / `chore:`。
-- 小步提交：每个 commit 尽量聚焦单一主题（功能、测试、文档分开）。
+- Preferred flow: `branch -> develop -> local test -> commit -> push -> PR -> merge`.
+- Avoid pushing directly to `master` unless explicitly required.
+- Suggested branch prefixes: `feat/...`, `fix/...`, `test/...`, `docs/...`, `chore/...`.
+- Use English commit messages with prefixes such as `feat:`, `fix:`, `test:`, `docs:`, or `chore:`.
+- Keep commits focused on a single concern when possible.
 
-### 提交前检查（与 obtcd 对齐）
+## Pre-Push Checks
 
-- 本仓启用 `.githooks/`：
-  - `pre-commit`：检查 `gofmt`
-  - `pre-push`：运行 `go test ./... -count=1`
-- 初次 clone 或 hooks 未生效时，执行：
-  - `./scripts/setup-git-hooks.sh`
-- 当前仓库已停用 GitHub Actions，以本地 `pre-push` 作为主要测试闸门，避免重复 CI 成本。
-- 若本机缺少 `bitcoind` 导致 `chain` 测试失败：
-  - 优先修复本地测试环境，或在具备完整依赖的环境中执行；
-  - agent 严格禁止在 `commit` / `push` / `merge` 时使用 `--no-verify`；
-  - 若 hooks 失败且无法在当前环境解决，agent 必须停止并明确告知用户阻塞原因，不能绕过检查继续提交或推送。
+- The repository uses `.githooks/`.
+- `pre-commit` checks formatting.
+- `pre-push` runs `go test ./... -count=1`.
+- If hooks are not installed, run `./scripts/setup-git-hooks.sh`.
+- If local `chain` tests require `bitcoind`, fix the environment or run the workflow in an environment that provides it.
+- Do not use `--no-verify` for `commit`, `push`, or `merge`.
+- If hooks fail and the issue cannot be resolved in the current environment, stop and report the blocker instead of bypassing validation.
 
-## 交互约束
+## Interaction Constraints
 
-- 对话回复一律中文。
-- 提交记录（commit message）使用英文。
+- Match the user's language for interactive discussion.
+- Use English for commit messages.
