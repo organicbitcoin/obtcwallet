@@ -16,6 +16,7 @@ type mockChainClient struct {
 	getBestBlockHeight int32
 	getBlockHashFunc   func() (*chainhash.Hash, error)
 	getBlockHeader     *wire.BlockHeader
+	blockStamp         *waddrmgr.BlockStamp
 }
 
 var _ chain.Interface = (*mockChainClient)(nil)
@@ -59,6 +60,14 @@ func (m *mockChainClient) FilterBlocks(*chain.FilterBlocksRequest) (
 }
 
 func (m *mockChainClient) BlockStamp() (*waddrmgr.BlockStamp, error) {
+	if m.blockStamp != nil {
+		stamp := *m.blockStamp
+		if stamp.Timestamp.IsZero() {
+			stamp.Timestamp = time.Unix(1234, 0)
+		}
+		return &stamp, nil
+	}
+
 	return &waddrmgr.BlockStamp{
 		Height:    500000,
 		Hash:      chainhash.Hash{},

@@ -1678,10 +1678,31 @@ func (w *Wallet) CalculateBalance(confirms int32) (btcutil.Amount, error) {
 	var balance btcutil.Amount
 	err := walletdb.View(w.db, func(tx walletdb.ReadTx) error {
 		txmgrNs := tx.ReadBucket(wtxmgrNamespaceKey)
-		var err error
-		blk := w.Manager.SyncedTo()
-		balance, err = w.TxStore.Balance(txmgrNs, confirms, blk.Height)
-		return err
+		syncBlock := w.Manager.SyncedTo()
+
+		unspent, err := w.TxStore.UnspentOutputs(txmgrNs)
+		if err != nil {
+			return err
+		}
+		for i := range unspent {
+			output := &unspent[i]
+			if IsExpiredForSpending(w.chainParams, output.Height, syncBlock.Height) {
+				continue
+			}
+			if !hasMinConfs(confirms, output.Height, syncBlock.Height) {
+				continue
+			}
+			if output.FromCoinBase && !hasMinConfs(
+				int32(w.chainParams.CoinbaseMaturity),
+				output.Height, syncBlock.Height,
+			) {
+				continue
+			}
+
+			balance += output.Amount
+		}
+
+		return nil
 	})
 	return balance, err
 }
@@ -1728,6 +1749,9 @@ func (w *Wallet) CalculateAccountBalances(account uint32, confirms int32) (Balan
 			}
 
 			bals.Total += output.Amount
+			if IsExpiredForSpending(w.chainParams, output.Height, syncBlock.Height) {
+				continue
+			}
 			if output.FromCoinBase && !hasMinConfs(
 				int32(w.chainParams.CoinbaseMaturity),
 				output.Height, syncBlock.Height,
@@ -2796,6 +2820,9 @@ func (w *Wallet) AccountBalances(scope waddrmgr.KeyScope,
 
 				continue
 			}
+			if IsExpiredForSpending(w.chainParams, output.Height, syncBlock.Height) {
+				continue
+			}
 			_, addrs, _, err := txscript.ExtractPkScriptAddrs(output.PkScript, w.chainParams)
 			if err != nil || len(addrs) == 0 {
 				continue
@@ -2888,6 +2915,9 @@ func (w *Wallet) ListUnspent(minconf, maxconf int32,
 			// more confs than the maximum are excluded.
 			confs := calcConf(output.Height, syncBlock.Height)
 			if confs < minconf || confs > maxconf {
+				continue
+			}
+			if IsExpiredForSpending(w.chainParams, output.Height, syncBlock.Height) {
 				continue
 			}
 

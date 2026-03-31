@@ -1,6 +1,10 @@
 package wallet
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/btcsuite/btcd/chaincfg"
+)
 
 func TestCalculateExpiryHeight(t *testing.T) {
 	h, err := CalculateExpiryHeight(100, 144)
@@ -75,5 +79,19 @@ func TestBuildExpiryInfoExpired(t *testing.T) {
 	}
 	if info.BlocksToExpiry != 0 {
 		t.Fatalf("expired blocks must be 0, got %d", info.BlocksToExpiry)
+	}
+}
+
+func TestIsExpiredForSpendingUsesNextBlockHeight(t *testing.T) {
+	t.Parallel()
+
+	if !IsExpiredForSpending(&chaincfg.ObtcRegTestParams, 98, 241) {
+		t.Fatalf("expected block 98 output to be expired at tip 241")
+	}
+	if IsExpiredForSpending(&chaincfg.ObtcRegTestParams, 99, 241) {
+		t.Fatalf("expected block 99 output to remain spendable at tip 241")
+	}
+	if IsExpiredForSpending(&chaincfg.TestNet3Params, 98, 241) {
+		t.Fatalf("non-OBTC networks must ignore expiry spendability")
 	}
 }

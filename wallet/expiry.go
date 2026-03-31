@@ -1,6 +1,11 @@
 package wallet
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+
+	"github.com/btcsuite/btcd/chaincfg"
+)
 
 type ExpiryStatus string
 
@@ -86,4 +91,30 @@ func BuildExpiryInfo(createHeight, tipHeight int32, windowBlocks uint64,
 		Status:         status,
 		DustRisk:       projectedReclaimSat < dustThresholdSat,
 	}, nil
+}
+
+// IsExpiredForSpending reports whether a confirmed output created at
+// createHeight must be treated as expired for normal wallet spending when the
+// current chain tip is tipHeight. Wallet spendability is based on the next
+// block height because consensus evaluates expiry rules at the transaction's
+// inclusion height, not the current tip.
+func IsExpiredForSpending(params *chaincfg.Params, createHeight, tipHeight int32) bool {
+	if params == nil || createHeight < 0 {
+		return false
+	}
+
+	expiryParams := chaincfg.GetExpiryParams(params)
+	if expiryParams == nil {
+		return false
+	}
+
+	spendHeight := tipHeight + 1
+	if tipHeight == math.MaxInt32 {
+		spendHeight = tipHeight
+	}
+	if spendHeight < expiryParams.EnableAtHeight {
+		return false
+	}
+
+	return spendHeight >= int32(expiryParams.CalculateExpiryKey(createHeight))
 }

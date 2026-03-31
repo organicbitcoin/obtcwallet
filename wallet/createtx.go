@@ -380,6 +380,9 @@ func (w *Wallet) findEligibleOutputs(dbtx walletdb.ReadTx,
 
 			continue
 		}
+		if IsExpiredForSpending(w.chainParams, output.Height, bs.Height) {
+			continue
+		}
 
 		// Only include this output if it meets the required number of
 		// confirmations. Coinbase transactions must have reached

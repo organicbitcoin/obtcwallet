@@ -231,7 +231,7 @@ func (s *agentWalletServer) GetExpiryRisk(_ context.Context,
 	}
 
 	outputs, err := s.lookupOutputs(
-		req.AccountNumber, req.MinConfirmations, req.Outpoints,
+		req.AccountNumber, req.MinConfirmations, req.Outpoints, true,
 	)
 	if err != nil {
 		return nil, err
@@ -289,7 +289,7 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 	}
 
 	selectedOutputs, err := s.lookupOutputs(
-		req.AccountNumber, req.MinConfirmations, req.Outpoints,
+		req.AccountNumber, req.MinConfirmations, req.Outpoints, false,
 	)
 	if err != nil {
 		return nil, err
@@ -621,7 +621,7 @@ func (s *agentWalletServer) ReserveUtxos(_ context.Context,
 	}
 
 	selectedOutputs, err := s.lookupOutputs(
-		req.AccountNumber, req.MinConfirmations, req.Outpoints,
+		req.AccountNumber, req.MinConfirmations, req.Outpoints, false,
 	)
 	if err != nil {
 		return nil, err
@@ -974,7 +974,7 @@ func (s *agentWalletServer) selectedOutputsForOperation(op *pb.Operation,
 	}
 
 	selectedOutputs, err := s.lookupOutputs(
-		op.AccountNumber, op.MinConfirmations, op.Outpoints,
+		op.AccountNumber, op.MinConfirmations, op.Outpoints, false,
 	)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -1583,7 +1583,7 @@ func (s *agentWalletServer) leasedOutputsByOutpoint() (
 }
 
 func (s *agentWalletServer) lookupOutputs(account uint32, minConfs int32,
-	outpoints []string) ([]*wallet.TransactionOutput, error) {
+	outpoints []string, includeExpired bool) ([]*wallet.TransactionOutput, error) {
 
 	if err := validateAccountAndMinConfs(account, minConfs); err != nil {
 		return nil, err
@@ -1592,6 +1592,7 @@ func (s *agentWalletServer) lookupOutputs(account uint32, minConfs int32,
 	outputs, err := s.wallet.UnspentOutputs(wallet.OutputSelectionPolicy{
 		Account:               account,
 		RequiredConfirmations: minConfs,
+		IncludeExpired:        includeExpired,
 	})
 	if err != nil {
 		return nil, translateError(err)
