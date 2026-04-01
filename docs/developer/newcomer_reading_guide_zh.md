@@ -92,7 +92,7 @@ replace github.com/btcsuite/btcd => ../obtcd
 - “能直接调用 OBTC chaincfg API”
 - 不等于 “当前主程序已经把自己运行在 `ObtcMainNetParams` 上”
 
-当前 `config.go` 选网逻辑仍然主要切 `MainNet / TestNet3 / TestNet4 / SimNet / SigNet / RegressionNet`，这一点会影响 expiry policy 是否走到真正的 OBTC 分支。第十二章会展开讲。
+当前 `config.go` 已经支持显式切到 `ObtcMainNet / ObtcTestNet / ObtcRegTest`，但默认网络仍然不是 OBTC；如果运行实例没有显式传入 `--obtcmainnet`、`--obtctestnet` 或 `--obtcregtest`，expiry policy 仍可能落到非 OBTC 分支。第十二章会展开讲。
 
 ### 1.4 架构总览
 
@@ -713,20 +713,17 @@ PublishTransaction()
 - `ResolveExpiryPolicy(&chaincfg.ObtcMainNetParams)` 会得到真正的 OBTC 值
 - `ResolveExpiryPolicy(&chaincfg.MainNetParams)` 会走 fallback
 
-而当前主程序的 `activeNet` 选网逻辑仍然主要使用：
+当前主程序的 `activeNet` 现在已经支持显式切换到：
 
-- `netparams.MainNetParams`
-- `netparams.TestNet3Params`
-- `netparams.TestNet4Params`
-- `netparams.SimNetParams`
-- `netparams.SigNetParams`
-- `netparams.RegressionNetParams`
+- `netparams.ObtcMainNetParams`
+- `netparams.ObtcTestNetParams`
+- `netparams.ObtcRegTestParams`
 
 因此你在阅读时要清楚：
 
-**“钱包已经可以直接调用 OBTC chaincfg API” 与 “当前运行实例一定已经在用 OBTC 网络参数” 是两回事。**
+**“钱包已经可以直接调用 OBTC chaincfg API” 与 “当前运行实例已经显式用 `--obtc*` 选到了 OBTC 网络参数” 仍然是两回事。**
 
-这既是当前实现能力，也是当前实现边界。
+默认路径依然是 Bitcoin 网络参数，只有显式传入 `--obtcmainnet`、`--obtctestnet` 或 `--obtcregtest` 时，主程序才会切到原生 OBTC network params。
 
 ### 7.6 expiring 阈值怎么来的
 
@@ -1449,13 +1446,16 @@ publish_only signer backend requires external signed PSBT; renewall CLI does not
 从 `config.go` 可以直接看到当前支持：
 
 - mainnet
+- obtcmainnet
+- obtctestnet
+- obtcregtest
 - testnet3
 - testnet4
 - simnet
 - signet
 - regtest
 
-这是 inherited `btcwallet` 风格的网络选择。
+这是在 inherited `btcwallet` 选网骨架上补出来的 OBTC 原生网络选择。
 
 ### 12.3 这里与 OBTC network params 之间的关系要特别小心
 
@@ -1464,7 +1464,7 @@ publish_only signer backend requires external signed PSBT; renewall CLI does not
 - 在编译期链接 `../obtcd`
 - 在 wallet 层调用 `chaincfg.GetExpiryParams()`
 
-但主程序的 `activeNet` 仍没有显式切换到：
+现在主程序也已经能显式切换到：
 
 - `chaincfg.ObtcMainNetParams`
 - `chaincfg.ObtcTestNetParams`
@@ -1473,9 +1473,9 @@ publish_only signer backend requires external signed PSBT; renewall CLI does not
 因此从纯代码事实出发，当前状态更准确地说是：
 
 - **钱包已经具备直接读取 OBTC expiry params 的能力**
-- **但主程序网络装配仍未完全收敛到原生 OBTC 网络参数选择**
+- **主程序在显式传入 `--obtc*` flags 时，也会切到原生 OBTC 网络参数选择**
 
-这也是你后续如果要继续推进的一个明显工程点。
+剩余要注意的是默认网络仍然不是 OBTC；如果运行实例没有显式带上 `--obtcmainnet`、`--obtctestnet` 或 `--obtcregtest`，就不会自动落到 OBTC 参数分支。
 
 ### 12.4 auto-renew 配置在哪看
 

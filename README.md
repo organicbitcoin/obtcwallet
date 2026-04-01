@@ -34,6 +34,84 @@ can be found [here](https://github.com/btcsuite/btcd).  An alternative
 SPV mode that is compatible with btcd and Bitcoin Core is planned for
 a future release.
 
+## OBTC testnet quick start
+
+This fork also supports running `btcwallet` against **OBTC** networks. The binary
+name stays `btcwallet`, but the default network is still Bitcoin mainnet, so you
+must explicitly pass one of:
+
+- `--obtcmainnet`
+- `--obtctestnet`
+- `--obtcregtest`
+
+For the current **OBTC testnet go-live** path, the minimum validated surface is:
+
+- legacy RPC: `obtc.getexpiry`, `obtc.renew`
+- batch CLI: `renewall`
+- signer mode: local signer path
+
+Current caveats / limits:
+
+- `renewall` does **not** support the `publish_only` signer backend yet.
+- auto-renew remains opt-in via `--autorenew` and should stay disabled unless
+  separately validated for your deployment.
+- remote signer support exists, but is still an experimental path.
+
+Default `obtctestnet` ports:
+
+- node P2P: `19527`
+- node JSON-RPC: `19528`
+- wallet legacy RPC: `19554`
+
+Minimal flow:
+
+```bash
+# 1) Start obtcd on obtctestnet
+btcd --obtctestnet \
+  --listen=0.0.0.0:19527 \
+  --rpclisten=127.0.0.1:19528 \
+  --rpcuser=testuser \
+  --rpcpass=testpass \
+  --txindex \
+  --expiryindex \
+  --notls
+
+# 2) Create the wallet
+btcwallet --create --obtctestnet
+
+# 3) Start the wallet and connect it to obtcd
+btcwallet --obtctestnet \
+  --rpcconnect=127.0.0.1:19528 \
+  --btcdusername=testuser \
+  --btcdpassword=testpass \
+  --username=walletuser \
+  --password=walletpass \
+  --experimentalrpclisten=127.0.0.1:19556 \
+  --noclienttls \
+  --noservertls
+```
+
+If you want to run `renewall`, point it at the agent gRPC listener instead of the
+legacy wallet RPC listener:
+
+```bash
+renewall \
+  --connect=127.0.0.1:19556 \
+  --walletpass='<private-passphrase>' \
+  --amount=0.5 \
+  --notls \
+  --dry-run
+```
+
+Example expiry query:
+
+```bash
+curl --user walletuser:walletpass \
+  -H 'content-type: text/plain;' \
+  --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.getexpiry","params":[{"limit":10}]}' \
+  http://127.0.0.1:19554/
+```
+
 Wallet clients can use one of two RPC servers:
 
   1. A legacy JSON-RPC server mostly compatible with Bitcoin Core

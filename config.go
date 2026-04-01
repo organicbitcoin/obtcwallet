@@ -57,11 +57,14 @@ type config struct {
 	AppDataDir      *cfgutil.ExplicitString `short:"A" long:"appdata" description:"Application data directory for wallet config, databases and logs"`
 	TestNet3        bool                    `long:"testnet" description:"Use the test Bitcoin network (version 3) (default mainnet)"`
 	TestNet4        bool                    `long:"testnet4" description:"Use the test Bitcoin network (version 4) (default mainnet)"`
+	ObtcMainNet     bool                    `long:"obtcmainnet" description:"Use the OBTC main network (default Bitcoin mainnet)"`
+	ObtcTestNet     bool                    `long:"obtctestnet" description:"Use the OBTC test network (default Bitcoin mainnet)"`
 	SimNet          bool                    `long:"simnet" description:"Use the simulation test network (default mainnet)"`
 	SigNet          bool                    `long:"signet" description:"Use the signet test network (default mainnet)"`
 	SigNetChallenge string                  `long:"signetchallenge" description:"Connect to a custom signet network defined by this challenge instead of using the global default signet test network -- Can be specified multiple times"`
 	SigNetSeedNode  []string                `long:"signetseednode" description:"Specify a seed node for the signet network instead of using the global default signet network seed nodes"`
 	RegressionNet   bool                    `long:"regtest" description:"Use the regression test network (default mainnet)"`
+	ObtcRegTest     bool                    `long:"obtcregtest" description:"Use the OBTC regression test network (default Bitcoin mainnet)"`
 	NoInitialLoad   bool                    `long:"noinitialload" description:"Defer wallet creation/opening on startup and enable loading wallets over RPC"`
 	DebugLevel      string                  `short:"d" long:"debuglevel" description:"Logging level {trace, debug, info, warn, error, critical}"`
 	LogDir          string                  `long:"logdir" description:"Directory to log output."`
@@ -85,7 +88,7 @@ type config struct {
 	AutoRenewExpiringThreshold    int32         `long:"autorenewexpiringthreshold" description:"Expiring threshold in blocks used by auto-renew status classification"`
 
 	// RPC client options
-	RPCConnect       string                  `short:"c" long:"rpcconnect" description:"Hostname/IP and port of btcd RPC server to connect to (default localhost:8334, testnet: localhost:18334, testnet4: localhost:48334, simnet: localhost:18556, regtest: localhost:18334)"`
+	RPCConnect       string                  `short:"c" long:"rpcconnect" description:"Hostname/IP and port of btcd RPC server to connect to (default localhost:8334, testnet: localhost:18334, testnet4: localhost:48334, obtcmainnet: localhost:9528, obtctestnet: localhost:19528, simnet: localhost:18556, regtest: localhost:18334, obtcregtest: localhost:29528)"`
 	CAFile           *cfgutil.ExplicitString `long:"cafile" description:"File containing root certificates to authenticate a TLS connections with btcd"`
 	DisableClientTLS bool                    `long:"noclienttls" description:"Disable TLS for the RPC client -- NOTE: This is only allowed if the RPC client is connecting to localhost"`
 	BtcdUsername     string                  `long:"btcdusername" description:"Username for btcd authentication"`
@@ -114,7 +117,7 @@ type config struct {
 	RPCKey                 *cfgutil.ExplicitString `long:"rpckey" description:"File containing the certificate key"`
 	OneTimeTLSKey          bool                    `long:"onetimetlskey" description:"Generate a new TLS certpair at startup, but only write the certificate to disk"`
 	DisableServerTLS       bool                    `long:"noservertls" description:"Disable TLS for the RPC server -- NOTE: This is only allowed if the RPC server is bound to localhost"`
-	LegacyRPCListeners     []string                `long:"rpclisten" description:"Listen for legacy RPC connections on this interface/port (default port: 8332, testnet: 18332, testnet4: 48332, simnet: 18554, regtest: 18332)"`
+	LegacyRPCListeners     []string                `long:"rpclisten" description:"Listen for legacy RPC connections on this interface/port (default port: 8332, testnet: 18332, testnet4: 48332, obtcmainnet: 9554, obtctestnet: 19554, simnet: 18554, regtest: 18332, obtcregtest: 29554)"`
 	LegacyRPCMaxClients    int64                   `long:"rpcmaxclients" description:"Max number of legacy RPC clients for standard connections"`
 	LegacyRPCMaxWebsockets int64                   `long:"rpcmaxwebsockets" description:"Max number of legacy RPC websocket connections"`
 	Username               string                  `short:"u" long:"username" description:"Username for legacy RPC and btcd authentication (if btcdusername is unset)"`
@@ -456,6 +459,14 @@ func loadConfig() (*config, []string, error) {
 		activeNet = &netparams.TestNet4Params
 		numNets++
 	}
+	if cfg.ObtcMainNet {
+		activeNet = &netparams.ObtcMainNetParams
+		numNets++
+	}
+	if cfg.ObtcTestNet {
+		activeNet = &netparams.ObtcTestNetParams
+		numNets++
+	}
 	if cfg.SimNet {
 		activeNet = &netparams.SimNetParams
 		numNets++
@@ -503,9 +514,14 @@ func loadConfig() (*config, []string, error) {
 		activeNet = &netparams.RegressionNetParams
 		numNets++
 	}
+	if cfg.ObtcRegTest {
+		activeNet = &netparams.ObtcRegTestParams
+		numNets++
+	}
 	if numNets > 1 {
-		str := "%s: The testnet, testnet4, signet, simnet, and " +
-			"regtest params can't be used together -- choose one"
+		str := "%s: The testnet, testnet4, obtcmainnet, obtctestnet, " +
+			"signet, simnet, regtest, and obtcregtest params can't " +
+			"be used together -- choose one"
 		err := fmt.Errorf(str, "loadConfig")
 		fmt.Fprintln(os.Stderr, err)
 		parser.WriteHelp(os.Stderr)
