@@ -44,18 +44,24 @@ must explicitly pass one of:
 - `--obtctestnet`
 - `--obtcregtest`
 
-For the current **OBTC testnet go-live** path, the minimum validated surface is:
+For the current **OBTC testnet v0.1 engineering preview**, the minimum intended
+surface is:
 
 - legacy RPC: `obtc.getexpiry`, `obtc.renew`
-- batch CLI: `renewall`
+- batch CLI: `renewall --dry-run`
 - signer mode: local signer path
 
 Current caveats / limits:
 
+- This is a source-only engineering preview, not a production wallet release.
+- Non-dry-run renewal (`obtc.renew` or `renewall` without `--dry-run`) requires
+  a synced and funded `obtctestnet` wallet and should be treated as a follow-up
+  validation item until testnet funds and txids are recorded.
 - `renewall` does **not** support the `publish_only` signer backend yet.
 - auto-renew remains opt-in via `--autorenew` and should stay disabled unless
   separately validated for your deployment.
-- remote signer support exists, but is still an experimental path.
+- remote signer support exists in the codebase, but is outside the v0.1
+  release scope.
 
 Default `obtctestnet` ports:
 
