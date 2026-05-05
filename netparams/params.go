@@ -41,6 +41,22 @@ var TestNet4Params = Params{
 	RPCServerPort: "48332",
 }
 
+// ObtcMainNetParams contains parameters specific to running btcwallet and
+// obtcd on the OBTC main network.
+var ObtcMainNetParams = Params{
+	Params:        &chaincfg.ObtcMainNetParams,
+	RPCClientPort: "9528",
+	RPCServerPort: "9554",
+}
+
+// ObtcTestNetParams contains parameters specific to running btcwallet and
+// obtcd on the OBTC test network.
+var ObtcTestNetParams = Params{
+	Params:        &chaincfg.ObtcTestNetParams,
+	RPCClientPort: "19528",
+	RPCServerPort: "19554",
+}
+
 // SimNetParams contains parameters specific to the simulation test network
 // (wire.SimNet).
 var SimNetParams = Params{
@@ -75,4 +91,12 @@ var RegressionNetParams = Params{
 	Params:        &chaincfg.RegressionNetParams,
 	RPCClientPort: "18334",
 	RPCServerPort: "18332",
+}
+
+// ObtcRegTestParams contains parameters specific to running btcwallet and
+// obtcd on the OBTC regression test network.
+var ObtcRegTestParams = Params{
+	Params:        &chaincfg.ObtcRegTestParams,
+	RPCClientPort: "29528",
+	RPCServerPort: "29554",
 }

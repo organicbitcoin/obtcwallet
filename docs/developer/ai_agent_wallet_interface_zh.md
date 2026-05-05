@@ -142,7 +142,7 @@ OBTC 和传统 BTC 钱包有一个根本区别：资产不是“放着就行”�
   - 或 `chaincfg/` 目录
   - 或 `obtcd` repo 根目录
 - `OBTC_EXPIRY_NETWORK`
-  - 当钱包当前链参数还不能直接表达 `obtcmainnet/obtctestnet/obtcregtest` 时，可显式指定逻辑网络名
+  - 当运行实例没有显式使用 `--obtcmainnet` / `--obtctestnet` / `--obtcregtest`，或需要兼容旧部署时，可显式指定逻辑网络名
 
 共享 resolver 现在已经接到了：
 
