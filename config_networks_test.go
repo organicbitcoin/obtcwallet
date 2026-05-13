@@ -57,6 +57,7 @@ func TestLoadConfigOBTCNetworkSelection(t *testing.T) {
 		wantParams     *netparams.Params
 		wantClientPort string
 		wantServerPort string
+		wantRPCConnect string
 	}{
 		{
 			name:           "obtc mainnet",
@@ -64,6 +65,7 @@ func TestLoadConfigOBTCNetworkSelection(t *testing.T) {
 			wantParams:     &netparams.ObtcMainNetParams,
 			wantClientPort: netparams.ObtcMainNetParams.RPCClientPort,
 			wantServerPort: netparams.ObtcMainNetParams.RPCServerPort,
+			wantRPCConnect: "127.0.0.1:9528",
 		},
 		{
 			name:           "obtc testnet",
@@ -71,6 +73,7 @@ func TestLoadConfigOBTCNetworkSelection(t *testing.T) {
 			wantParams:     &netparams.ObtcTestNetParams,
 			wantClientPort: netparams.ObtcTestNetParams.RPCClientPort,
 			wantServerPort: netparams.ObtcTestNetParams.RPCServerPort,
+			wantRPCConnect: "127.0.0.1:19528",
 		},
 		{
 			name:           "obtc regtest",
@@ -78,6 +81,7 @@ func TestLoadConfigOBTCNetworkSelection(t *testing.T) {
 			wantParams:     &netparams.ObtcRegTestParams,
 			wantClientPort: netparams.ObtcRegTestParams.RPCClientPort,
 			wantServerPort: netparams.ObtcRegTestParams.RPCServerPort,
+			wantRPCConnect: "127.0.0.1:29528",
 		},
 	}
 
@@ -104,10 +108,9 @@ func TestLoadConfigOBTCNetworkSelection(t *testing.T) {
 					activeNet.RPCServerPort, tc.wantServerPort,
 				)
 			}
-			if cfg.RPCConnect != net.JoinHostPort("localhost", tc.wantClientPort) {
-				t.Fatalf("rpcconnect = %q, want localhost:%s",
-					cfg.RPCConnect, tc.wantClientPort,
-				)
+			if cfg.RPCConnect != tc.wantRPCConnect {
+				t.Fatalf("rpcconnect = %q, want %q",
+					cfg.RPCConnect, tc.wantRPCConnect)
 			}
 
 			assertListenerPort(t, cfg.LegacyRPCListeners, tc.wantServerPort)

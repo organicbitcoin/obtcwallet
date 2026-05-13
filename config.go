@@ -47,6 +47,17 @@ var (
 	defaultLogDir      = filepath.Join(defaultAppDataDir, defaultLogDirname)
 )
 
+func defaultRPCConnectAddress(params *netparams.Params) string {
+	host := "localhost"
+	switch params {
+	case &netparams.ObtcMainNetParams, &netparams.ObtcTestNetParams,
+		&netparams.ObtcRegTestParams:
+		host = "127.0.0.1"
+	}
+
+	return net.JoinHostPort(host, params.RPCClientPort)
+}
+
 //nolint:lll
 type config struct {
 	// General application behavior
@@ -77,8 +88,8 @@ type config struct {
 	AutoRenewEnabled              bool          `long:"autorenew" description:"Enable OBTC auto-renew scheduler"`
 	AutoRenewInterval             time.Duration `long:"autorenewinterval" description:"Interval between auto-renew runs"`
 	AutoRenewFailureBackoff       time.Duration `long:"autorenewfailurebackoff" description:"Backoff duration after failed auto-renew runs (0 to disable)"`
-	AutoRenewAmount               float64       `long:"autorenewamount" description:"Renew amount in BTC per selected UTXO"`
-	AutoRenewMaxRenewAmountPerRun float64       `long:"autorenewmaxrenewamountperrun" description:"Maximum total renew amount in BTC per run (0 means unlimited)"`
+	AutoRenewAmount               float64       `long:"autorenewamount" description:"Renew amount in the selected network coin per selected UTXO"`
+	AutoRenewMaxRenewAmountPerRun float64       `long:"autorenewmaxrenewamountperrun" description:"Maximum total renew amount in the selected network coin per run (0 means unlimited)"`
 	AutoRenewMinConf              int32         `long:"autorenewminconf" description:"Minimum confirmations for auto-renew candidate UTXOs"`
 	AutoRenewWindowStart          int32         `long:"autorenewwindowstart" description:"Auto-renew window upper bound of blocks_to_expiry"`
 	AutoRenewWindowEnd            int32         `long:"autorenewwindowend" description:"Auto-renew window lower bound of blocks_to_expiry"`
@@ -88,7 +99,7 @@ type config struct {
 	AutoRenewExpiringThreshold    int32         `long:"autorenewexpiringthreshold" description:"Expiring threshold in blocks used by auto-renew status classification"`
 
 	// RPC client options
-	RPCConnect       string                  `short:"c" long:"rpcconnect" description:"Hostname/IP and port of btcd RPC server to connect to (default localhost:8334, testnet: localhost:18334, testnet4: localhost:48334, obtcmainnet: localhost:9528, obtctestnet: localhost:19528, simnet: localhost:18556, regtest: localhost:18334, obtcregtest: localhost:29528)"`
+	RPCConnect       string                  `short:"c" long:"rpcconnect" description:"Hostname/IP and port of btcd RPC server to connect to (default localhost:8334, testnet: localhost:18334, testnet4: localhost:48334, obtcmainnet: 127.0.0.1:9528, obtctestnet: 127.0.0.1:19528, simnet: localhost:18556, regtest: localhost:18334, obtcregtest: 127.0.0.1:29528)"`
 	CAFile           *cfgutil.ExplicitString `long:"cafile" description:"File containing root certificates to authenticate a TLS connections with btcd"`
 	DisableClientTLS bool                    `long:"noclienttls" description:"Disable TLS for the RPC client -- NOTE: This is only allowed if the RPC client is connecting to localhost"`
 	BtcdUsername     string                  `long:"btcdusername" description:"Username for btcd authentication"`
@@ -668,7 +679,7 @@ func loadConfig() (*config, []string, error) {
 		neutrino.BanThreshold = cfg.BanThreshold
 	} else {
 		if cfg.RPCConnect == "" {
-			cfg.RPCConnect = net.JoinHostPort("localhost", activeNet.RPCClientPort)
+			cfg.RPCConnect = defaultRPCConnectAddress(activeNet)
 		}
 
 		// Add default port to connect flag if missing.

@@ -47,6 +47,8 @@ Current milestone:
 ## Known limits
 
 - This is not production financial infrastructure.
+- Mainnet-candidate readiness is tracked in
+  [`docs/mainnet-readiness.md`](docs/mainnet-readiness.md).
 - Non-dry-run renewal requires a synced and funded OBTC testnet wallet and
   remains a follow-up validation item until public txids are recorded.
 - `renewall` does not support the `publish_only` signer backend yet.
