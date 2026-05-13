@@ -1,131 +1,134 @@
-# OBTC Wallet 实现总结（Phase 5，面向新读者）
+# OBTC Wallet Phase 5 Implementation Summary
 
-> 本文档是 `obtcwallet` 当前实现状态的独立总结，目标是让新读者快速理解：
-> 1) 这个仓库在 OBTC 体系中的职责；
-> 2) Phase 5 已完成了什么；
-> 3) 接下来应该从哪里继续开发与验证。
+> This document summarizes the current `obtcwallet` implementation for readers
+> who need to understand the repository quickly:
+>
+> 1. what role this repository plays in OBTC;
+> 2. what Phase 5 has implemented;
+> 3. where future development and validation should continue.
 
----
+## 1. One-Line Positioning
 
-## 1. 一句话定位
+`obtcwallet` owns wallet-side expiry awareness and renewal operations.
 
-`obtcwallet` 负责 **钱包侧的到期感知与续期操作**。  
-链侧规则（到期索引、REAP 共识、模板注入）由 `obtcd` 负责。
+Chain-side rules, including the expiry index, REAP consensus, and mining
+template injection, are owned by `obtcd`.
 
----
+## 2. Current Phase 5 Goal
 
-## 2. Phase 5 当前目标（手动续期版本）
+This scope focuses on Phase 5A:
 
-本轮范围聚焦 Phase 5A：
-- `obtc.getexpiry`：查询钱包 UTXO 的到期状态；
-- `obtc.renew`：手动指定 UTXO 续期；
-- 相关单元测试与验证文档。
+- `obtc.getexpiry`: query wallet UTXO expiry state;
+- `obtc.renew`: manually renew selected UTXOs;
+- related unit tests and validation documentation.
 
-不在本轮范围：
-- 自动续期策略（定时/预算/随机窗口）；
-- 大规模批量 CLI 工作流（可在后续阶段扩展）。
+Out of scope for this pass:
 
----
+- automatic renewal policy, timers, budgets, and randomized windows;
+- large-scale batch CLI workflows, unless separately scoped later.
 
-## 3. 已实现内容
+## 3. Implemented Work
 
-### A. 钱包到期基础模型（wallet 层）
-文件：`wallet/expiry.go`
+### A. Wallet Expiry Model
 
-已实现函数：
+File: `wallet/expiry.go`
+
+Implemented functions:
+
 - `CalculateExpiryHeight`
 - `ClassifyExpiryStatus`
 - `EstimateDaysToExpiry`
 - `BuildExpiryInfo`
 
-作用：
-- 将 UTXO 的创建高度映射到到期高度；
-- 给出 `ok/expiring/expired` 状态；
-- 输出天数估算与 `dust_risk` 提示字段。
+Purpose:
 
-测试：`wallet/expiry_test.go`
+- map UTXO creation height to expiry height;
+- classify state as `ok`, `expiring`, or `expired`;
+- expose day estimates and a `dust_risk` advisory field.
 
-### B. Legacy RPC 扩展（rpc/legacyrpc）
-文件：
+Tests: `wallet/expiry_test.go`
+
+### B. Legacy RPC Extensions
+
+Files:
+
 - `rpc/legacyrpc/obtc_methods.go`
-- `rpc/legacyrpc/methods.go`（handler 注册）
+- `rpc/legacyrpc/methods.go`
 
-已接入命令：
+Registered commands:
+
 - `obtc.getexpiry`
 - `obtc.renew`
 
-`obtc.getexpiry`：
-- 支持 limit / before_height 等参数；
-- 返回按到期高度与 outpoint 稳定排序。
+`obtc.getexpiry`:
 
-`obtc.renew`：
-- 支持 outpoints + amount + target_address + max_feerate + minconf；
-- 默认可生成新地址作为续期目标；
-- 返回 txid、输入/输出数量、费率等摘要。
+- supports parameters such as `limit` and `before_height`;
+- returns stable ordering by expiry height and outpoint.
 
-测试：`rpc/legacyrpc/obtc_methods_test.go`
+`obtc.renew`:
 
----
+- supports outpoints, amount, target address, maximum fee rate, and minimum
+  confirmations;
+- can generate a fresh target address by default;
+- returns txid, input/output counts, fee rate, and other summary fields.
 
-## 4. 关键代码索引
+Tests: `rpc/legacyrpc/obtc_methods_test.go`
 
-- `wallet/expiry.go`：到期计算与状态分类核心
-- `wallet/expiry_test.go`：到期核心函数直接单测
-- `rpc/legacyrpc/obtc_methods.go`：`obtc.getexpiry` / `obtc.renew` 逻辑
-- `rpc/legacyrpc/obtc_methods_test.go`：RPC 辅助函数与参数校验直接单测
-- `rpc/legacyrpc/methods.go`：命令路由注册点
-- `cmd/renewall/main.go`：批量续期 CLI（支持 dry-run / 窗口过滤 / 定时多轮执行）
-- `cmd/renewall/main_test.go`：renewall 参数与过滤逻辑单测
+## 4. Code Index
 
----
+- `wallet/expiry.go`: expiry calculation and status classification.
+- `wallet/expiry_test.go`: direct tests for expiry helpers.
+- `rpc/legacyrpc/obtc_methods.go`: `obtc.getexpiry` and `obtc.renew` logic.
+- `rpc/legacyrpc/obtc_methods_test.go`: RPC helper and parameter tests.
+- `rpc/legacyrpc/methods.go`: command routing registration.
+- `cmd/renewall/main.go`: batch renewal CLI with dry-run, window filtering,
+  and scheduled multi-run execution.
+- `cmd/renewall/main_test.go`: `renewall` parameter and filtering tests.
 
-## 5. 完成度总览
+## 5. Completion Snapshot
 
-| 模块 | 状态 | 说明 |
+| Area | Status | Notes |
 |---|---|---|
-| 钱包到期计算基础 | ✅ 已完成 | 计算、分类、聚合信息已可用 |
-| `obtc.getexpiry` | ✅ 已完成 | legacyrpc 已接入 |
-| `obtc.renew`（手动） | ✅ 已完成（v1） | 参数校验 + 指定输入续期路径已接入 |
-| 自动续期 | 🟡 部分完成 | 已有 policy 基础模型；CLI 侧已具备窗口过滤与定时多轮执行，钱包进程内后台调度仍未接线 |
-| 批量 CLI 工作流 | ✅ 可用（增强版） | `cmd/renewall` 支持 `dry-run`、`window-start/window-end` 过滤、`interval/runs` 定时批处理 |
-| 验证文档（phase5-validation） | ✅ 已补齐 | 已补 `getexpiry/renew` 请求响应、失败案例、真实 txid 与测试命令 |
+| Wallet expiry core | Complete | Calculation, classification, and aggregation helpers are available. |
+| `obtc.getexpiry` | Complete | Wired through legacy RPC. |
+| `obtc.renew` | Complete v1 | Parameter validation and explicit-input renewal path are wired. |
+| Automatic renewal | Partial | Policy primitives exist; CLI scheduling exists; in-process wallet scheduling is not fully wired. |
+| Batch CLI workflow | Available | `cmd/renewall` supports `dry-run`, `window-start`, `window-end`, `interval`, and `runs`. |
+| Validation docs | Complete | `phase5-validation` records requests, responses, failure cases, txid, and test commands. |
 
----
+## 6. Test And Quality Constraints
 
-## 6. 测试与质量约束
+- New helper functions should have direct unit tests.
+- Executed coverage includes:
+  - direct `wallet/expiry_*` tests;
+  - new `obtc_methods` helper and parameter parsing tests;
+  - focused critical-path tests.
 
-- 约束：新添加函数必须有直接单元测试。
-- 已执行：
-  - `wallet/expiry_*` 直接测试；
-  - `obtc_methods` 新增 helper/参数解析函数直接测试；
-  - 关键路径测试通过。
+Notes:
 
-说明：
-- 仓库全量测试在无 `bitcoind` 可执行环境下，`chain` 相关测试可能失败；
-- 钱包功能开发阶段优先保证目标模块测试与静态检查稳定通过。
+- Full repository tests may fail in environments without a `bitcoind`
+  executable for chain integration tests.
+- During wallet feature work, prioritize target module tests and static checks
+  that are stable in the local environment.
 
----
+## 7. Recommended Phase 5B Work
 
-## 7. 下一步建议（Phase 5B）
+1. Wire the in-process automatic renewal scheduler:
+   - bind `wallet/autorenew.go` policy to the execution path;
+   - define lifecycle and concurrency behavior.
 
-1. 钱包进程内自动续期调度接线：
-   - 将 `wallet/autorenew.go` policy 与实际执行链路绑定；
-   - 明确启动/停止生命周期与并发保护。
+2. Add automatic renewal audit and risk controls:
+   - record candidates, successes, failures, and fee summaries per run;
+   - add maximum budget and failure backoff behavior.
 
-2. 自动续期执行审计与风控：
-   - 为每轮执行记录候选数、成功/失败数、费用摘要；
-   - 增加最大预算与失败退避策略。
+3. Strengthen end-to-end validation:
+   - cover scheduled execution, restart recovery, and reconnect races;
+   - turn validation scripts into durable documentation.
 
-3. 端到端验证补强：
-   - 覆盖“定时执行 + 重启恢复 + reconnect race”组合场景；
-   - 固化验证脚本并沉淀到文档。
+## 8. Glossary
 
----
-
-## 8. 术语对照
-
-- **UTXO (Unspent Transaction Output)**：未花费交易输出
-- **REAP (Reclaim Expired Assets Protocol)**：到期资产回收机制（链侧）
-- **RPC (Remote Procedure Call)**：远程过程调用接口
-- **Legacy RPC**：`btcwallet` 兼容层 JSON-RPC 服务
-- **Dust**：小于经济可花费阈值的输出
+- UTXO: Unspent Transaction Output.
+- REAP: Reclaim Expired Assets Protocol.
+- RPC: Remote Procedure Call.
+- Legacy RPC: the `btcwallet` compatible JSON-RPC service.
+- Dust: an output below an economically spendable threshold.

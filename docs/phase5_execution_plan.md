@@ -1,61 +1,64 @@
-# OBTC Wallet Phase 5 执行计划 v2（可执行版）
+# OBTC Wallet Phase 5 Execution Plan v2
 
-> 目标：把 `obtcwallet` 的到期感知与续期能力做成可落地、可测试、可上线迭代的最小闭环。  
-> 本版修正点：对齐 `btcwallet` 现有代码结构，明确 5A/5B 边界，避免跨仓职责混淆。
+> Goal: make expiry awareness and renewal in `obtcwallet` a small, shippable,
+> testable loop.
+>
+> This revision aligns the plan with the existing `btcwallet` code structure,
+> defines the Phase 5A and 5B boundary, and avoids mixing wallet work with
+> chain-consensus work.
 
----
+## 0. Key Conclusions
 
-## 0. 关键结论（先看）
+1. Phase 5A must deliver:
+   - `obtc.getexpiry`
+   - `obtc.renew`
+   - validation documentation and tests
 
-1. **Phase 5A 必做**：
-   - `obtc.getexpiry`（查询）
-   - `obtc.renew`（手动续期）
-   - 验证文档与测试
+2. This pass does not include:
+   - automatic renewal policy, budgets, or fee caps
+   - a broad `renew-all` CLI workflow, unless it is separately scoped later
 
-2. **本轮不做**：
-   - 自动续期（窗口策略/预算/限费）
-   - `renew-all` CLI（若后续需要再单独评估）
+3. Cross-repository ownership:
+   - `obtcd`: chain rules, expiry index, REAP consensus, and mining templates
+   - `obtcwallet`: wallet-side expiry queries, renewal transaction construction,
+     and submission
 
-3. **跨仓边界**：
-   - `obtcd`：链规则、到期索引、REAP 共识与模板
-   - `obtcwallet`：钱包视角的查询、续期交易构造与提交
+## 1. Alignment With The Current Repository
 
----
+`obtcwallet` already has:
 
-## 1. 与现有仓库结构对齐
+- `rpc/legacyrpc` for JSON-RPC
+- `rpc/rpcserver` for gRPC
+- `wallet/`, `wtxmgr/`, and `waddrmgr/`
 
-`obtcwallet` 当前已有：
-- `rpc/legacyrpc`（JSON-RPC）
-- `rpc/rpcserver`（gRPC）
-- `wallet/`、`wtxmgr/`、`waddrmgr/`
+Recommended split:
 
-因此本期建议：
+### 5A: Start In `legacyrpc`
 
-### 5A（优先）先落在 legacyrpc
-- 新增 wallet 级方法（`wallet/expiry.go`、`wallet/renew.go`）
-- 在 `rpc/legacyrpc` 暴露 `obtc.getexpiry` / `obtc.renew`
-- gRPC 可先不做（避免双栈并行放大范围）
+- Add wallet-level methods in `wallet/expiry.go` and `wallet/renew.go`.
+- Expose `obtc.getexpiry` and `obtc.renew` through `rpc/legacyrpc`.
+- Defer gRPC to avoid doubling the initial surface area.
 
-### 5B 再补 gRPC/CLI
-- 复用 5A wallet 方法，不重复造逻辑
+### 5B: Add gRPC / CLI Paths
 
----
+- Reuse the 5A wallet methods instead of duplicating business logic.
 
-## 2. 数据契约（v1）
+## 2. Data Contract v1
 
-### 2.1 `obtc.getexpiry` 返回项
+### 2.1 `obtc.getexpiry` Response Fields
 
-每个 UTXO 至少包含：
-- `outpoint`：`txid:vout`
+Each UTXO should include at least:
+
+- `outpoint`: `txid:vout`
 - `amount_sat`
 - `create_height`
 - `expiry_height`
 - `blocks_to_expiry`
-- `days_to_expiry`（展示字段）
-- `status`：`ok | expiring | expired`
-- `dust_risk`：布尔值（提示用途）
+- `days_to_expiry`
+- `status`: `ok | expiring | expired`
+- `dust_risk`: boolean advisory field
 
-### 2.2 `obtc.renew` 返回项
+### 2.2 `obtc.renew` Response Fields
 
 - `txid`
 - `input_count`
@@ -64,171 +67,182 @@
 - `renewed_total_sat`
 - `target_address`
 
----
+## 3. Single Source Of Truth For Expiry Parameters
 
-## 3. 到期参数单一真源（必须）
+All wallet-side expiry calculations must read OBTC parameters that match
+`obtcd`, including window and activation heights.
 
-钱包侧所有到期计算必须读取与 `obtcd` 一致的 OBTC 参数（窗口、启用高度）。
+Requirements:
 
-要求：
-- 不允许在钱包代码里硬编码独立窗口常量；
-- 统一 helper 入口，例如：`wallet/expiry.go` 中 `CalcExpiry(...)`；
-- 写明参数来源与兼容策略（主网/测试网/regtest）。
+- Do not hard-code independent wallet-only expiry window constants.
+- Use one helper entry point, for example `CalcExpiry(...)` in
+  `wallet/expiry.go`.
+- Document the parameter source and compatibility behavior for mainnet,
+  testnet, and regtest.
 
----
+## 4. Executable Task Breakdown
 
-## 4. 可执行任务拆解（按提交顺序）
+## Task A: Wallet Expiry Core
 
-## Task A — wallet 到期计算基础层
+Suggested files:
 
-**文件建议**：
-- `wallet/expiry.go`（新）
-- `wallet/expiry_test.go`（新）
+- `wallet/expiry.go`
+- `wallet/expiry_test.go`
 
-**实现内容**：
-- 定义内部结构：`ExpiryInfo`
-- 提供函数：
+Implementation:
+
+- Define an internal `ExpiryInfo` structure.
+- Add helpers:
   - `CalcExpiryHeight(createHeight, params)`
   - `ClassifyExpiryStatus(tipHeight, expiryHeight)`
   - `EstimateDaysToExpiry(blocksToExpiry)`
 
-**验收**：
-- 覆盖边界：`tip = expiry-1 / expiry / expiry+1`
-- 单测通过
+Acceptance:
 
----
+- Cover boundary cases: `tip = expiry-1`, `tip = expiry`, and
+  `tip = expiry+1`.
+- Unit tests pass.
 
-## Task B — `obtc.getexpiry`（legacyrpc）
+## Task B: `obtc.getexpiry` In `legacyrpc`
 
-**文件建议**：
-- `rpc/legacyrpc/methods.go`（或同层命令路由文件）
-- `rpc/legacyrpc/obtc_methods.go`（新，推荐）
+Suggested files:
+
+- `rpc/legacyrpc/methods.go`
+- `rpc/legacyrpc/obtc_methods.go`
 - `rpc/legacyrpc/obtc_methods_test.go`
 
-**实现内容**：
-- 方法名：`obtc.getexpiry`
-- 支持过滤参数（v1）：
-  - `before_height`（可选）
-  - `limit`（可选）
-- 返回按 `expiry_height asc, outpoint asc` 稳定排序
+Implementation:
 
-**验收**：
-- 正常场景 + 空结果场景
-- 排序稳定性测试
+- Method name: `obtc.getexpiry`
+- Support v1 filters:
+  - optional `before_height`
+  - optional `limit`
+- Return entries in stable `expiry_height asc, outpoint asc` order.
 
----
+Acceptance:
 
-## Task C — `obtc.renew`（legacyrpc）
+- Normal and empty-result scenarios are covered.
+- Sorting stability is tested.
 
-**文件建议**：
-- `wallet/renew.go`（新）
-- `wallet/renew_test.go`（新）
+## Task C: `obtc.renew` In `legacyrpc`
+
+Suggested files:
+
+- `wallet/renew.go`
+- `wallet/renew_test.go`
 - `rpc/legacyrpc/obtc_methods.go`
 
-**实现内容**：
-- 输入：显式 outpoints（第一版先不做复杂筛选）
-- 续期默认策略：
-  - 目标地址默认新地址（fresh addr）
-  - 校验 `max_feerate`（可选参数）
-- 拒绝条件：
-  - outpoint 不存在
-  - 已过期且不允许续期（按当前策略）
-  - 参数非法
+Implementation:
 
-**验收**：
-- 至少 1 条成功续期集成测试（返回 txid）
-- 失败路径错误码/错误文案稳定
+- Input uses explicit outpoints in the first version.
+- Default renewal behavior:
+  - use a fresh target address by default
+  - validate optional `max_feerate`
+- Reject:
+  - missing outpoints
+  - expired outputs when renewal is not allowed by policy
+  - invalid parameters
 
----
+Acceptance:
 
-## Task D — 验证文档（本期必须）
+- At least one successful renewal integration test returns a txid.
+- Failure-path error codes and messages are stable.
 
-**文件**：`docs/phase5-validation.md`（新）
+## Task D: Validation Documentation
 
-**内容必须包含**：
-- `getexpiry` 请求/响应样例
-- `renew` 请求/响应样例
-- 至少 2 个失败案例与预期错误
-- 一次真实 txid 记录
+File: `docs/phase5-validation.md`
 
----
+Required content:
 
-## 5. 5B（下一阶段）
+- `getexpiry` request and response examples
+- `renew` request and response examples
+- at least two failure cases with expected errors
+- one real recorded txid
 
-### 5B-1 自动续期
-- 触发窗口（到期前区间）
-- 每次上限与预算
-- 审计日志
+## 5. Phase 5B
 
-### 5B-2 CLI `renew-all`
-- **注意**：若 CLI 依赖 `btcctl`，需要在对应仓实现；
-- 若坚持在本仓做，可提供本地工具命令，但要避免与既有生态冲突。
+### 5B-1 Automatic Renewal
 
----
+- Trigger window before expiry.
+- Per-run limits and budget.
+- Audit log.
 
-## 6. 测试策略（最小可交付）
+### 5B-2 `renew-all` CLI
 
-### 单元测试
-- 到期计算边界
-- 状态分类
-- 参数异常
-- 排序稳定性
+- If the CLI depends on `btcctl`, implement that integration in the
+  corresponding repository.
+- If this repository keeps a local tool command, avoid conflicting with the
+  existing ecosystem.
 
-### 集成测试
-- 钱包 UTXO -> `getexpiry`
-- `renew` 成功后产生新输出
-- 失败路径（无效 outpoint/参数非法/费率超限）
+## 6. Test Strategy
 
-### 回归测试
-- 重复调用 `getexpiry` 返回顺序一致
-- 同请求重复执行时结果可解释（幂等性语义明确）
+### Unit Tests
 
----
+- Expiry calculation boundaries.
+- Status classification.
+- Invalid parameters.
+- Stable sorting.
 
-## 7. 风险与防呆
+### Integration Tests
 
-1. **跨仓参数漂移**
-- 防呆：参数读取统一入口 + 文档固定参数来源。
+- Wallet UTXO to `getexpiry`.
+- `renew` creates a new output after success.
+- Failure paths for invalid outpoints, invalid parameters, and excessive fee
+  rates.
 
-2. **范围失控（一次做太多）**
-- 防呆：本期只做 5A，自动续期/CLI 批量放 5B。
+### Regression Tests
 
-3. **双 RPC 栈并行导致工期翻倍**
-- 防呆：先 legacyrpc，gRPC 后补。
+- Repeated `getexpiry` calls return the same order.
+- Repeated requests have clear idempotency behavior.
 
-4. **续期费用不可控**
-- 防呆：`max_feerate` + 明确失败返回。
+## 7. Risks And Guards
 
----
+1. Cross-repository parameter drift.
+   - Guard: central parameter reader plus documented parameter source.
 
-## 8. 里程碑与 DoD
+2. Scope creep.
+   - Guard: keep this pass to 5A; automatic renewal and broad CLI workflows
+     stay in 5B.
 
-### M1（基础层）
-- `wallet/expiry.go` + 单测
+3. Parallel RPC stacks doubling effort.
+   - Guard: ship legacy RPC first, then add gRPC.
 
-### M2（查询可用）
-- `obtc.getexpiry` 可用，排序稳定，测试通过
+4. Unbounded renewal fees.
+   - Guard: `max_feerate` and explicit failure responses.
 
-### M3（续期可用）
-- `obtc.renew` 可广播成功，失败路径清晰
+## 8. Milestones And DoD
 
-### M4（文档闭环）
-- `phase5-validation.md` 完整记录
+### M1: Core Layer
 
-**Phase 5A DoD**：
-- [ ] `obtc.getexpiry` 已上线（legacyrpc）
-- [ ] `obtc.renew` 已上线（legacyrpc）
-- [ ] `go test ./...` 通过
-- [ ] `docs/phase5-validation.md` 完成
+- `wallet/expiry.go` plus unit tests.
 
----
+### M2: Query Path
 
-## 9. 下一步立即执行建议
+- `obtc.getexpiry` works, sorts stably, and has passing tests.
 
-按下面顺序开工最稳：
-1. 先做 `wallet/expiry.go` + test；
-2. 接 `obtc.getexpiry`；
-3. 再做 `wallet/renew.go` + `obtc.renew`；
-4. 最后补验证文档。
+### M3: Renewal Path
 
-这样 2–3 次小 PR 就能落地 5A，而不是一次大改难回滚。
+- `obtc.renew` can broadcast successfully and has clear failure paths.
+
+### M4: Documentation Loop
+
+- `phase5-validation.md` is complete.
+
+Phase 5A DoD:
+
+- [ ] `obtc.getexpiry` is shipped through `legacyrpc`.
+- [ ] `obtc.renew` is shipped through `legacyrpc`.
+- [ ] `go test ./...` passes, or exceptions are documented.
+- [ ] `docs/phase5-validation.md` is complete.
+
+## 9. Immediate Next Steps
+
+Recommended order:
+
+1. Build `wallet/expiry.go` plus tests.
+2. Wire `obtc.getexpiry`.
+3. Build `wallet/renew.go` plus `obtc.renew`.
+4. Add validation documentation.
+
+This keeps Phase 5A in two or three small changes instead of one large
+hard-to-review patch.

@@ -5,15 +5,15 @@ Date: 2026-02-27
 ## Scope
 
 Validated legacy RPC methods:
+
 - `obtc.getexpiry`
 - `obtc.renew`
 
 Validation covers:
+
 1. Success path for `obtc.renew` with a real txid.
 2. Response schema sanity for `obtc.getexpiry`.
 3. Stable failure behavior for invalid renew requests.
-
----
 
 ## Test Environment
 
@@ -23,8 +23,6 @@ Validation covers:
 - Wallet RPC: local legacy RPC (`127.0.0.1:19554`)
 
 A disposable end-to-end harness was executed under `/tmp/obtcwallet-e2e9`.
-
----
 
 ## `obtc.getexpiry` Validation
 
@@ -37,7 +35,7 @@ curl --user walletuser:walletpass \
   http://127.0.0.1:19554/
 ```
 
-### Sample Response (excerpt)
+### Sample Response
 
 ```json
 {
@@ -63,9 +61,7 @@ curl --user walletuser:walletpass \
 }
 ```
 
-Result: ✅ schema and data fields match Phase 5 expectations.
-
----
+Result: schema and data fields matched Phase 5 expectations.
 
 ## `obtc.renew` Success Path
 
@@ -95,15 +91,13 @@ curl --user walletuser:walletpass \
 }
 ```
 
-Result: ✅ renew transaction broadcast succeeded.
+Result: renewal transaction broadcast succeeded.
 
 Recorded txid: `e7fc6fcc87b3f25224e43aa1ee927932850fe636f7d254aa72d6f701f1576a5e`
 
----
-
 ## Failure Cases
 
-### Case 1: Empty outpoints
+### Case 1: Empty Outpoints
 
 Request params: `[], 0.5`
 
@@ -118,9 +112,9 @@ Response:
 }
 ```
 
-Result: ✅ expected validation error.
+Result: expected validation error.
 
-### Case 2: Non-positive amount
+### Case 2: Non-Positive Amount
 
 Request params: `["<valid-outpoint>"], 0`
 
@@ -135,17 +129,17 @@ Response:
 }
 ```
 
-Result: ✅ expected validation error.
+Result: expected validation error.
 
----
+## `cmd/renewall` Additional Validation
 
-## `cmd/renewall` 补充验证（策略/调度）
+Enhancements:
 
-增强点：
-- 支持按 `blocks_to_expiry` 做窗口筛选：`--window-start` / `--window-end`
-- 支持定时多轮执行：`--interval` / `--runs`
+- supports `blocks_to_expiry` window filtering through `--window-start` and
+  `--window-end`;
+- supports scheduled multi-run execution through `--interval` and `--runs`.
 
-示例（窗口 + dry-run）：
+Example: windowed dry-run:
 
 ```bash
 renewall \
@@ -155,7 +149,7 @@ renewall \
   --dry-run
 ```
 
-示例（每 30 分钟执行一次，共 4 轮）：
+Example: run every 30 minutes for 4 total runs:
 
 ```bash
 renewall \
@@ -163,17 +157,20 @@ renewall \
   --amount 0.5 --interval 30m --runs 4
 ```
 
----
-
 ## Additional Notes
 
-This validation run includes a fix for renew eligibility handling during chain reconnect/sync races:
+This validation run includes a fix for renewal eligibility handling during
+chain reconnect and sync races:
 
-- `obtc.renew` now selects inputs across key scopes (`nil` coin selection scope) while keeping account restriction.
-- Transaction creation now uses the higher of chain-client and wallet-manager synced heights to avoid stale-height false negatives for coinbase maturity checks.
+- `obtc.renew` now selects inputs across key scopes (`nil` coin selection
+  scope) while preserving account restriction.
+- Transaction creation now uses the higher of chain-client and wallet-manager
+  synced heights to avoid stale-height false negatives for coinbase maturity
+  checks.
 
 Related tests run:
 
 - `go test ./wallet -run 'AutoRenew|Renew|Expiry|CreateTx|CreateSimple' -count=1`
 - `go test ./rpc/legacyrpc -run 'obtc|renew|getexpiry|Renew|Expiry' -count=1`
-- `go test ./cmd/renewall -count=1`（含窗口过滤与调度参数解析单测）
+- `go test ./cmd/renewall -count=1`, including window filtering and scheduling
+  parameter parsing tests.

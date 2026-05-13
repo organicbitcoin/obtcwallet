@@ -34,7 +34,6 @@ obtcwallet/ (repo root)
 
   docs/
     phase5_execution_plan.md
-    phase5_execution_plan_zh.md
     phase5-validation.md
 
   scripts/              # helper scripts

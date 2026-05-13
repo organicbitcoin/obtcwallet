@@ -4,56 +4,40 @@ This section contains documentation for developers and contributors to `btcwalle
 
 ---
 
-## 📜 Contribution Guidelines
+## Contribution Guidelines
 
 Best practices for contributing code, including our development process, commit message standards, and code review process.
 
-**[➡️ Read the Contribution Guidelines](./contribution_guidelines.md)**
+**[Read the Contribution Guidelines](./contribution_guidelines.md)**
 
 ---
 
-## 🎨 Code Formatting Rules
+## Code Formatting Rules
 
 Specific rules for code style and formatting to ensure consistency across the project.
 
-**[➡️ View the Formatting Rules](./code_formatting_rules.md)**
+**[View the Formatting Rules](./code_formatting_rules.md)**
 
 ---
 
-## ✅ Unit Testing Guidelines
+## Unit Testing Guidelines
 
 Best practices for writing clear, effective, and maintainable unit tests.
 
-**[➡️ Learn about Unit Testing](./unit_testing_guidelines.md)**
+**[Learn about Unit Testing](./unit_testing_guidelines.md)**
 
 ---
 
-## 🏛️ Engineering Guide
+## Engineering Guide
 
 A deep dive into the core design philosophy, architectural patterns, and Go implementation details that guide the development of `btcwallet`.
 
-**[➡️ Read the Engineering Guide](./ENGINEERING_GUIDE.md)**
+**[Read the Engineering Guide](./ENGINEERING_GUIDE.md)**
 
 ---
 
-## 🧭 Newcomer Guide
-
-A detailed Chinese reading guide for developers who need to understand `obtcwallet` from startup flow to OBTC expiry, renew, and agent features.
-
-**[➡️ Read the Newcomer Reading Guide](./newcomer_reading_guide_zh.md)**
-
----
-
-## 🤖 OBTC / AI Wallet
-
-Design notes for evolving `obtcwallet` from a human-operated wallet into a capability-driven, expiry-aware wallet system for AI agents.
-
-**[➡️ Read the AI Wallet Design Draft](./ai_agent_wallet_interface_zh.md)**
-
----
-
-## 📝 Architecture Decision Records (ADRs)
+## Architecture Decision Records (ADRs)
 
 Formal documentation of significant architectural decisions, their context, and consequences.
 
-**[➡️ View Architecture Decision Records](./adr/README.md)**
+**[View Architecture Decision Records](./adr/README.md)**
