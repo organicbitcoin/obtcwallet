@@ -1,6 +1,6 @@
 # OBTCWallet Mainnet Readiness
 
-Checked: 2026-05-13
+Checked: 2026-05-20
 
 This file records the wallet-side checks that matter before treating an OBTC
 mainnet-candidate wallet as ready for real funds.
@@ -9,6 +9,18 @@ mainnet-candidate wallet as ready for real funds.
 
 - Current pre-push equivalent test suite passed:
   `.githooks/pre-push`.
+- 2026-05-20 scoped mainnet-candidate wallet gates passed:
+  - `go test . -run 'Test.*(OBTC|Obtc|AutoRenew|Network|RPC)' -count=1`
+  - `go test ./wallet -run 'Expiry|AutoRenew|Renew' -count=1`
+  - `go test ./rpc/legacyrpc -run 'OBTC|Obtc|Renew|Expiry' -count=1`
+  - `go test ./rpc/rpcserver -run 'Agent|Renew|Signer|Expiry' -count=1`
+- 2026-05-20 expired-UTXO spendability evidence passed:
+  - `go test ./wallet -run 'Test.*(Expired|ListUnspent|Spendable|OBTC)' -count=1`
+  - `TestSpendableViewsSkipExpiredOBTCUtxos` confirms expired OBTC UTXOs are
+    excluded from `ListUnspent` and spendable balance while remaining visible
+    in total balance.
+  - `TestTxToOutputsSkipsExpiredOBTCUtxos` confirms wallet coin selection
+    skips expired OBTC UTXOs.
 - `--obtcmainnet` selects `netparams.ObtcMainNetParams`.
 - `--obtcmainnet` default node RPC connection is
   `127.0.0.1:9528`.
@@ -17,6 +29,47 @@ mainnet-candidate wallet as ready for real funds.
   mainnet-affecting options commented by default.
 - `sample-btcwallet.conf` now warns not to use the sample configuration with
   valuable mainnet funds until this readiness list is closed.
+
+## Mainnet-Candidate Capability Boundary
+
+For the first mainnet-candidate operating scope, `obtcwallet` may be described
+as a controlled operator wallet path, not as a production wallet for valuable
+mainnet funds.
+
+Supported claims for mainnet-candidate documentation:
+
+- Native OBTC network selection exists for `--obtcmainnet`, `--obtctestnet`,
+  and `--obtcregtest`.
+- `--obtcmainnet` selects OBTC chain parameters, OBTC network directories, and
+  the default `obtcd` RPC endpoint `127.0.0.1:9528`.
+- The OBTC mainnet legacy wallet JSON-RPC default port is `9554`.
+- `obtc.getexpiry` is available for wallet-side expiry inspection.
+- `obtc.renew` and the local signer path exist for controlled renewal testing.
+- `renewall --dry-run` is available for batch-renewal selection and preview
+  without signing or publishing.
+- Auto-renew exists only as opt-in operator automation and is disabled by
+  default.
+
+Conditional or evidence-gated claims:
+
+- Funded `obtc.renew` remains evidence-gated until a public txid, command, and
+  node-height record are attached to the release evidence.
+- Non-dry-run `renewall` remains evidence-gated. If it is not validated before
+  mainnet-candidate, release notes must explicitly exclude it from the first
+  operating scope.
+- Backup, restore, wallet unlock, restart, and rescan flows require operator
+  evidence before they are described as mainnet-candidate-ready.
+- Remote signer usage is out of scope unless an end-to-end operator run is
+  recorded.
+
+Explicitly out of scope for mainnet-candidate:
+
+- Production wallet readiness.
+- Default-on auto-renew.
+- `publish_only` signer backend support.
+- Exchange, custody, or broad end-user wallet support.
+- Any recommendation to store valuable mainnet funds before the open gaps below
+  are closed.
 
 ## Open Gaps
 
