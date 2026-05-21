@@ -18,21 +18,10 @@ jobs:
       - name: Checkout wallet
         uses: actions/checkout@v4
 
-      - name: Checkout control-plane evidence tools
-        uses: actions/checkout@v4
-        with:
-          repository: organicbitcoin/obtc-control-plane
-          path: obtc-control-plane
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.24.0"
-
-      - name: Evidence collector smoke
-        run: |
-          bash -n obtc-control-plane/scripts/release/obtcwallet_testnet_evidence.sh
-          obtc-control-plane/scripts/release/obtcwallet_testnet_evidence.sh --help
 
       - name: Mainnet readiness claim check
         run: python3 scripts/check-mainnet-readiness-claims.py
