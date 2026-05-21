@@ -1,0 +1,50 @@
+name: OBTC wallet smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: OBTC wallet readiness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout wallet
+        uses: actions/checkout@v4
+
+      - name: Checkout control-plane evidence tools
+        uses: actions/checkout@v4
+        with:
+          repository: organicbitcoin/obtc-control-plane
+          path: obtc-control-plane
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.0"
+
+      - name: Evidence collector smoke
+        run: |
+          bash -n obtc-control-plane/scripts/release/obtcwallet_testnet_evidence.sh
+          obtc-control-plane/scripts/release/obtcwallet_testnet_evidence.sh --help
+
+      - name: Mainnet readiness claim check
+        run: python3 scripts/check-mainnet-readiness-claims.py
+
+      - name: OBTC config tests
+        run: go test . -run 'Test.*(OBTC|Obtc|AutoRenew|Network|RPC)' -count=1
+
+      - name: OBTC wallet tests
+        run: go test ./wallet -run 'Expiry|AutoRenew|Renew|Expired|ListUnspent|Spendable|OBTC' -count=1
+
+      - name: OBTC legacy RPC tests
+        run: go test ./rpc/legacyrpc -run 'OBTC|Obtc|Renew|Expiry|obtc|getexpiry|renew' -count=1
+
+      - name: OBTC agent wallet tests
+        run: go test ./rpc/rpcserver -run 'Agent|Renew|Signer|Expiry' -count=1

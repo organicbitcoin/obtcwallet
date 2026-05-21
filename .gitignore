@@ -9,3 +9,4 @@ coverage.txt
 .vscode
 .DS_Store
 .aider*
+__pycache__/
