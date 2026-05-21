@@ -18,6 +18,9 @@ jobs:
       - name: Checkout wallet
         uses: actions/checkout@v4
 
+      - name: Checkout sibling obtcd
+        run: git clone --depth 1 https://github.com/organicbitcoin/obtcd.git ../obtcd
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
