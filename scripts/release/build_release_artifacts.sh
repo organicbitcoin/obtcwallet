@@ -166,7 +166,7 @@ write_manifest() {
         echo "|---|---|"
         echo "| Version | \`${VERSION}\` |"
         echo "| Wallet commit | \`${COMMIT}\` |"
-        echo "| obtcd replace source | \`${OBTCD_SRC}\` |"
+        echo "| obtcd replace source | sibling checkout used by \`go.mod\` replace |"
         echo "| obtcd commit | \`${OBTCD_COMMIT}\` |"
         echo "| Generated UTC | \`${generated_at}\` |"
         echo "| Target | \`${GOOS_VALUE}/${GOARCH_VALUE}\` |"
@@ -192,7 +192,7 @@ write_manifest() {
         echo "## Verification"
         echo
         echo '```bash'
-        echo "cd ${ARTIFACT_DIR}"
+        echo "# Run from this artifact directory."
         echo "shasum -a 256 -c SHA256SUMS"
         echo '```'
         echo
