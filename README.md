@@ -75,6 +75,13 @@ go build -o ./btcwallet .
 go build -o ./renewall ./cmd/renewall
 ```
 
+To produce a checksumed operator artifact directory for a frozen candidate
+commit:
+
+```bash
+scripts/release/build_release_artifacts.sh --version mainnet-candidate-2026-07
+```
+
 ## Test
 
 The full upstream wallet test matrix can require external Bitcoin node

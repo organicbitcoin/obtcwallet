@@ -1,0 +1,49 @@
+name: OBTC wallet release artifacts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-smoke:
+    name: Wallet artifact smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout wallet
+        uses: actions/checkout@v6
+
+      - name: Checkout sibling obtcd
+        run: git clone --depth 1 https://github.com/organicbitcoin/obtcd.git ../obtcd
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.6"
+          cache: false
+
+      - name: Shell syntax
+        run: bash -n scripts/release/build_release_artifacts.sh
+
+      - name: Artifact build plan
+        run: scripts/release/build_release_artifacts.sh --dry-run --version mainnet-candidate-ci
+
+      - name: Build artifacts
+        run: |
+          scripts/release/build_release_artifacts.sh \
+            --version mainnet-candidate-ci \
+            --out /tmp/obtcwallet-release \
+            --goos linux \
+            --goarch amd64
+
+      - name: Verify checksums
+        run: |
+          artifact_dir="$(find /tmp/obtcwallet-release -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+          test -n "${artifact_dir}"
+          cd "${artifact_dir}"
+          shasum -a 256 -c SHA256SUMS

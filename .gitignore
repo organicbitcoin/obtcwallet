@@ -2,6 +2,7 @@ btcwallet
 dropwtxmgr
 renewall
 sweepaccount
+dist/
 vendor
 .idea
 coverage.txt
