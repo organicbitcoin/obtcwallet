@@ -495,12 +495,27 @@ func getInfo(icmd interface{}, w *wallet.Wallet, chainClient *chain.RPCClient) (
 	info.WalletVersion = int32(waddrmgr.LatestMgrVersion)
 	info.Balance = bal.ToBTC()
 	info.PaytxFee = float64(txrules.DefaultRelayFeePerKb)
+	info.TestNet = legacyInfoTestNetFlag(w.ChainParams())
 	// We don't set the following since they don't make much sense in the
 	// wallet architecture:
 	//  - unlocked_until
 	//  - errors
 
 	return info, nil
+}
+
+func legacyInfoTestNetFlag(params *chaincfg.Params) bool {
+	if params == nil {
+		return false
+	}
+
+	switch params.Net {
+	case wire.TestNet, wire.TestNet3, wire.TestNet4, wire.SimNet,
+		wire.ObtcTestNet, wire.ObtcRegNet:
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeAddress(s string, params *chaincfg.Params) (btcutil.Address, error) {
