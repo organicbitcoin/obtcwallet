@@ -121,6 +121,9 @@ func walletMain() error {
 			return err
 		}
 	}
+	if rpcs != nil {
+		rpcs.serve()
+	}
 
 	// Add interrupt handlers to shutdown the various process components
 	// before exiting.  Interrupt handlers run in LIFO order, so the wallet
@@ -136,7 +139,7 @@ func walletMain() error {
 			// TODO: Does this need to wait for the grpc server to
 			// finish up any requests?
 			log.Warn("Stopping RPC server...")
-			rpcs.Stop()
+			rpcs.stop()
 			log.Info("RPC server shutdown")
 		})
 	}

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -101,13 +102,70 @@ func generateRPCKeyPair(writeKey bool) (tls.Certificate, error) {
 	return keyPair, nil
 }
 
-func startRPCServers(walletLoader *wallet.Loader) (*grpc.Server, *legacyrpc.Server, error) {
+type experimentalRPCServer struct {
+	server    *grpc.Server
+	listeners []net.Listener
+
+	mu      sync.Mutex
+	started bool
+}
+
+func (s *experimentalRPCServer) serve() {
+	if s == nil || s.server == nil {
+		return
+	}
+
+	s.mu.Lock()
+	s.started = true
+	listeners := append([]net.Listener(nil), s.listeners...)
+	s.mu.Unlock()
+
+	for _, lis := range listeners {
+		lis := lis
+		go func() {
+			log.Infof("Experimental RPC server listening on %s",
+				lis.Addr())
+			err := s.server.Serve(lis)
+			log.Tracef("Finished serving experimental RPC: %v", err)
+		}()
+	}
+}
+
+func (s *experimentalRPCServer) stop() {
+	if s == nil || s.server == nil {
+		return
+	}
+	s.server.Stop()
+}
+
+func (s *experimentalRPCServer) registerWallet(wallet *wallet.Wallet) error {
+	if s == nil || s.server == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.started {
+		return errors.New("experimental RPC server already started before wallet services were registered")
+	}
+
+	rpcserver.StartWalletService(s.server, wallet)
+
+	agentOpts, err := buildAgentWalletOptions()
+	if err != nil {
+		return err
+	}
+	rpcserver.StartAgentWalletServiceWithOptions(s.server, wallet, agentOpts)
+	return nil
+}
+
+func startRPCServers(walletLoader *wallet.Loader) (*experimentalRPCServer, *legacyrpc.Server, error) {
 	var (
-		server       *grpc.Server
-		legacyServer *legacyrpc.Server
-		legacyListen = net.Listen
-		keyPair      tls.Certificate
-		err          error
+		experimentalServer *experimentalRPCServer
+		legacyServer       *legacyrpc.Server
+		legacyListen       = net.Listen
+		keyPair            tls.Certificate
+		err                error
 	)
 	if cfg.DisableServerTLS {
 		log.Info("Server TLS is disabled.  Only legacy RPC may be used")
@@ -134,18 +192,12 @@ func startRPCServers(walletLoader *wallet.Loader) (*grpc.Server, *legacyrpc.Serv
 				return nil, nil, err
 			}
 			creds := credentials.NewServerTLSFromCert(&keyPair)
-			server = grpc.NewServer(grpc.Creds(creds))
+			server := grpc.NewServer(grpc.Creds(creds))
 			rpcserver.StartVersionService(server)
 			rpcserver.StartWalletLoaderService(server, walletLoader, activeNet)
-			for _, lis := range listeners {
-				lis := lis
-				go func() {
-					log.Infof("Experimental RPC server listening on %s",
-						lis.Addr())
-					err := server.Serve(lis)
-					log.Tracef("Finished serving expimental RPC: %v",
-						err)
-				}()
+			experimentalServer = &experimentalRPCServer{
+				server:    server,
+				listeners: listeners,
 			}
 		}
 	}
@@ -168,11 +220,11 @@ func startRPCServers(walletLoader *wallet.Loader) (*grpc.Server, *legacyrpc.Serv
 	}
 
 	// Error when neither the GRPC nor legacy RPC servers can be started.
-	if server == nil && legacyServer == nil {
+	if experimentalServer == nil && legacyServer == nil {
 		return nil, nil, errors.New("no suitable RPC services can be started")
 	}
 
-	return server, legacyServer, nil
+	return experimentalServer, legacyServer, nil
 }
 
 type listenFunc func(net string, laddr string) (net.Listener, error)
@@ -243,15 +295,11 @@ func makeListeners(normalizedListenAddrs []string, listen listenFunc) []net.List
 // with a wallet to enable remote wallet access.  For the GRPC server, this
 // registers the WalletService service, and for the legacy JSON-RPC server it
 // enables methods that require a loaded wallet.
-func startWalletRPCServices(wallet *wallet.Wallet, server *grpc.Server, legacyServer *legacyrpc.Server) error {
+func startWalletRPCServices(wallet *wallet.Wallet, server *experimentalRPCServer, legacyServer *legacyrpc.Server) error {
 	if server != nil {
-		rpcserver.StartWalletService(server, wallet)
-
-		agentOpts, err := buildAgentWalletOptions()
-		if err != nil {
+		if err := server.registerWallet(wallet); err != nil {
 			return err
 		}
-		rpcserver.StartAgentWalletServiceWithOptions(server, wallet, agentOpts)
 	}
 	if legacyServer != nil {
 		legacyServer.RegisterWallet(wallet)
