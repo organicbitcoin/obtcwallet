@@ -79,7 +79,7 @@ btcwallet --obtctestnet \
 # Query expiry state through legacy RPC.
 curl --user walletuser:walletpass \
   -H 'content-type: text/plain;' \
-  --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.getexpiry","params":[{"limit":10}]}' \
+  --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.getexpiry","params":[10]}' \
   http://127.0.0.1:19554/
 
 # Exercise the batch renewal selector without signing or publishing.

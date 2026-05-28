@@ -132,7 +132,7 @@ Query expiry state through the legacy wallet RPC:
 ```bash
 curl --user walletuser:walletpass \
   -H 'content-type: text/plain;' \
-  --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.getexpiry","params":[{"limit":10}]}' \
+  --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.getexpiry","params":[10]}' \
   http://127.0.0.1:19554/
 ```
 

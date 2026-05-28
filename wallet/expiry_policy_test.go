@@ -54,13 +54,13 @@ func TestResolveExpiryPolicyOBTCTestNet(t *testing.T) {
 
 	policy, warnings := ResolveExpiryPolicy(&chaincfg.ObtcTestNetParams)
 
-	if policy.WindowBlocks != 1008 {
+	if policy.WindowBlocks != 144 {
 		t.Fatalf("unexpected window blocks: %d", policy.WindowBlocks)
 	}
 	if policy.DustThresholdSat != 720 {
 		t.Fatalf("unexpected dust threshold: %d", policy.DustThresholdSat)
 	}
-	if policy.ExpiringThresholdBlocks != 252 {
+	if policy.ExpiringThresholdBlocks != 36 {
 		t.Fatalf("unexpected threshold: %d", policy.ExpiringThresholdBlocks)
 	}
 	if policy.Source != "obtcd_chaincfg" {
