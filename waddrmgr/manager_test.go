@@ -1976,6 +1976,74 @@ func TestManager(t *testing.T) {
 	}
 }
 
+func TestAccountPropertiesSupportsOBTCNetworks(t *testing.T) {
+	for _, params := range []*chaincfg.Params{
+		&chaincfg.ObtcMainNetParams,
+		&chaincfg.ObtcTestNetParams,
+		&chaincfg.ObtcRegTestParams,
+	} {
+		params := params
+		t.Run(params.Name, func(t *testing.T) {
+			teardown, db := emptyDB(t)
+			defer teardown()
+
+			root, err := hdkeychain.NewMaster(seed, params)
+			if err != nil {
+				t.Fatalf("NewMaster: %v", err)
+			}
+
+			var mgr *Manager
+			err = walletdb.Update(db, func(tx walletdb.ReadWriteTx) error {
+				ns, err := tx.CreateTopLevelBucket(waddrmgrNamespaceKey)
+				if err != nil {
+					return err
+				}
+				err = Create(
+					ns, root, pubPassphrase, privPassphrase,
+					params, fastScrypt, time.Time{},
+				)
+				if err != nil {
+					return err
+				}
+				mgr, err = Open(ns, pubPassphrase, params)
+				return err
+			})
+			if err != nil {
+				t.Fatalf("Create/Open: %v", err)
+			}
+			defer mgr.Close()
+
+			scopedMgr, err := mgr.FetchScopedKeyManager(KeyScopeBIP0044)
+			if err != nil {
+				t.Fatalf("FetchScopedKeyManager: %v", err)
+			}
+
+			err = walletdb.View(db, func(tx walletdb.ReadTx) error {
+				ns := tx.ReadBucket(waddrmgrNamespaceKey)
+				props, err := scopedMgr.AccountProperties(
+					ns, DefaultAccountNum,
+				)
+				if err != nil {
+					return err
+				}
+				if props.AccountPubKey == nil {
+					t.Fatal("expected account public key")
+				}
+				got := props.AccountPubKey.Version()
+				want := params.HDPublicKeyID[:]
+				if string(got) != string(want) {
+					t.Fatalf("unexpected account pubkey version: got=%x want=%x",
+						got, want)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("AccountProperties: %v", err)
+			}
+		})
+	}
+}
+
 func testManagerCase(t *testing.T, caseName string,
 	caseCreatedWatchingOnly bool, casePrivPassphrase []byte,
 	caseKey *hdkeychain.ExtendedKey) {

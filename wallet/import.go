@@ -134,6 +134,20 @@ func (w *Wallet) isPubKeyForNet(pubKey *hdkeychain.ExtendedKey) bool {
 			version == waddrmgr.HDVersionTestNetBIP0049 ||
 			version == waddrmgr.HDVersionTestNetBIP0084
 
+	case wire.ObtcMainNet, wire.ObtcTestNet, wire.ObtcRegNet:
+		chainPubVersion := binary.BigEndian.Uint32(
+			w.chainParams.HDPublicKeyID[:],
+		)
+		if uint32(version) == chainPubVersion {
+			return true
+		}
+		if w.chainParams.Net == wire.ObtcMainNet {
+			return version == waddrmgr.HDVersionMainNetBIP0049 ||
+				version == waddrmgr.HDVersionMainNetBIP0084
+		}
+		return version == waddrmgr.HDVersionTestNetBIP0049 ||
+			version == waddrmgr.HDVersionTestNetBIP0084
+
 	// For simnet, we'll also allow the mainnet versions since simnet
 	// doesn't have defined versions for some of our key scopes, and the
 	// mainnet versions are usually used as the default regardless of the

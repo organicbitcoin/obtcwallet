@@ -2514,10 +2514,13 @@ func (s *ScopedKeyManager) cloneKeyWithVersion(key *hdkeychain.ExtendedKey) (
 
 	// Determine the appropriate version based on the current network and
 	// key scope.
-	var version HDVersion
-	net := s.rootManager.ChainParams().Net
+	chainParams := s.rootManager.ChainParams()
+	net := chainParams.Net
+
+	var versionBytes [4]byte
 	switch net {
 	case wire.MainNet:
+		var version HDVersion
 		switch s.scope {
 		case KeyScopeBIP0044, KeyScopeBIP0086:
 			version = HDVersionMainNetBIP0044
@@ -2528,10 +2531,12 @@ func (s *ScopedKeyManager) cloneKeyWithVersion(key *hdkeychain.ExtendedKey) (
 		default:
 			return nil, fmt.Errorf("unsupported scope %v", s.scope)
 		}
+		binary.BigEndian.PutUint32(versionBytes[:], uint32(version))
 
 	case wire.TestNet, wire.TestNet3, wire.TestNet4,
 		netparams.SigNetWire(s.rootManager.ChainParams()):
 
+		var version HDVersion
 		switch s.scope {
 		case KeyScopeBIP0044, KeyScopeBIP0086:
 			version = HDVersionTestNetBIP0044
@@ -2542,8 +2547,10 @@ func (s *ScopedKeyManager) cloneKeyWithVersion(key *hdkeychain.ExtendedKey) (
 		default:
 			return nil, fmt.Errorf("unsupported scope %v", s.scope)
 		}
+		binary.BigEndian.PutUint32(versionBytes[:], uint32(version))
 
 	case wire.SimNet:
+		var version HDVersion
 		switch s.scope {
 		case KeyScopeBIP0044, KeyScopeBIP0086:
 			version = HDVersionSimNetBIP0044
@@ -2557,13 +2564,35 @@ func (s *ScopedKeyManager) cloneKeyWithVersion(key *hdkeychain.ExtendedKey) (
 		default:
 			return nil, fmt.Errorf("unsupported scope %v", s.scope)
 		}
+		binary.BigEndian.PutUint32(versionBytes[:], uint32(version))
+
+	case wire.ObtcMainNet, wire.ObtcTestNet, wire.ObtcRegNet:
+		switch s.scope {
+		case KeyScopeBIP0044, KeyScopeBIP0086:
+			versionBytes = chainParams.HDPublicKeyID
+		case KeyScopeBIP0049Plus:
+			if net == wire.ObtcMainNet {
+				binary.BigEndian.PutUint32(versionBytes[:],
+					uint32(HDVersionMainNetBIP0049))
+			} else {
+				binary.BigEndian.PutUint32(versionBytes[:],
+					uint32(HDVersionTestNetBIP0049))
+			}
+		case KeyScopeBIP0084:
+			if net == wire.ObtcMainNet {
+				binary.BigEndian.PutUint32(versionBytes[:],
+					uint32(HDVersionMainNetBIP0084))
+			} else {
+				binary.BigEndian.PutUint32(versionBytes[:],
+					uint32(HDVersionTestNetBIP0084))
+			}
+		default:
+			return nil, fmt.Errorf("unsupported scope %v", s.scope)
+		}
 
 	default:
 		return nil, fmt.Errorf("unsupported net %v", net)
 	}
-
-	var versionBytes [4]byte
-	binary.BigEndian.PutUint32(versionBytes[:], uint32(version))
 
 	return key.CloneWithVersion(versionBytes[:])
 }
