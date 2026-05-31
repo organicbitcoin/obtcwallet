@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -37,6 +38,8 @@ type fakeAgentWalletClient struct {
 	closeSessionErr       error
 	previewRenewalResp    *pb.PreviewRenewalResponse
 	previewRenewalErr     error
+	previewRenewalResps   []*pb.PreviewRenewalResponse
+	previewRenewalErrs    []error
 	submitRenewalResp     *pb.SubmitRenewalResponse
 	submitRenewalErr      error
 }
@@ -95,6 +98,20 @@ func (c *fakeAgentWalletClient) PreviewRenewal(_ context.Context,
 
 	c.calls = append(c.calls, "PreviewRenewal")
 	c.previewRenewalReqs = append(c.previewRenewalReqs, req)
+	callIndex := len(c.previewRenewalReqs) - 1
+	if callIndex < len(c.previewRenewalResps) ||
+		callIndex < len(c.previewRenewalErrs) {
+
+		var resp *pb.PreviewRenewalResponse
+		if callIndex < len(c.previewRenewalResps) {
+			resp = c.previewRenewalResps[callIndex]
+		}
+		var err error
+		if callIndex < len(c.previewRenewalErrs) {
+			err = c.previewRenewalErrs[callIndex]
+		}
+		return resp, err
+	}
 	return c.previewRenewalResp, c.previewRenewalErr
 }
 
@@ -447,12 +464,88 @@ func TestRunRenewAllOnceExecutesViaAgentFlow(t *testing.T) {
 	}
 
 	if got := stdout.String(); !strings.Contains(got,
-		"[1/1] renewed abc:1 txid=tx-1 operation_id=op-1\n") {
+		"[1/2] renewed abc:1 txid=tx-1 operation_id=op-1\n") {
 
 		t.Fatalf("unexpected stdout: %q", got)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestRunRenewAllOnceScansPastPreviewFailure(t *testing.T) {
+	useTestOpts(t)
+	opts.WalletPass = "topsecret"
+	opts.BatchLimit = 1
+
+	filter, err := newRenewFilter(false, -1, -1)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId: opts.WalletID,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "stale:0", Status: "expiring", BlocksToExpiry: 1},
+				{Outpoint: "renewable:0", Status: "expiring", BlocksToExpiry: 2},
+			},
+		},
+		issueCapabilityResp: &pb.IssueCapabilityResponse{
+			Meta:       &pb.ResponseMeta{},
+			Capability: &pb.Capability{CapabilityId: "cap-1"},
+		},
+		openSignerSessionResp: &pb.OpenSignerSessionResponse{
+			Meta:    &pb.ResponseMeta{},
+			Session: &pb.SignerSession{SignerSessionId: "sess-1"},
+		},
+		previewRenewalResps: []*pb.PreviewRenewalResponse{
+			nil,
+			{
+				Meta:      &pb.ResponseMeta{},
+				Operation: &pb.Operation{OperationId: "op-1"},
+			},
+		},
+		previewRenewalErrs: []error{
+			errors.New("outpoint no longer spendable"),
+			nil,
+		},
+		submitRenewalResp: &pb.SubmitRenewalResponse{
+			Meta:      &pb.ResponseMeta{},
+			Operation: &pb.Operation{OperationId: "op-1"},
+			Txid:      "tx-1",
+		},
+		closeSessionResp:     &pb.CloseSignerSessionResponse{Meta: &pb.ResponseMeta{}},
+		revokeCapabilityResp: &pb.RevokeCapabilityResponse{Meta: &pb.ResponseMeta{}},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := runRenewAllOnce(client, filter, &stdout, &stderr); err != nil {
+		t.Fatalf("runRenewAllOnce: %v", err)
+	}
+
+	if len(client.previewRenewalReqs) != 2 {
+		t.Fatalf("expected preview to continue after failure, got %d calls",
+			len(client.previewRenewalReqs))
+	}
+	if len(client.submitRenewalReqs) != 1 {
+		t.Fatalf("expected one successful submit, got %d",
+			len(client.submitRenewalReqs))
+	}
+	if got := stdout.String(); !strings.Contains(got,
+		"[2/2] renewed renewable:0 txid=tx-1 operation_id=op-1\n") {
+
+		t.Fatalf("unexpected stdout: %q", got)
 	}
 }
 

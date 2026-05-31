@@ -13,23 +13,31 @@ import (
 	"github.com/btcsuite/btcwallet/waddrmgr"
 )
 
-// TestComputeInputScript checks that the wallet can create the full
-// witness script for a witness output.
+// TestComputeInputScript checks that the wallet can create the full input
+// script for supported wallet outputs.
 func TestComputeInputScript(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name              string
-		scope             waddrmgr.KeyScope
-		expectedScriptLen int
+		name               string
+		scope              waddrmgr.KeyScope
+		expectedScriptLen  int
+		expectedWitnessLen int
 	}{{
-		name:              "BIP084 P2WKH",
-		scope:             waddrmgr.KeyScopeBIP0084,
-		expectedScriptLen: 0,
+		name:               "BIP084 P2WKH",
+		scope:              waddrmgr.KeyScopeBIP0084,
+		expectedScriptLen:  0,
+		expectedWitnessLen: 2,
 	}, {
-		name:              "BIP049 nested P2WKH",
-		scope:             waddrmgr.KeyScopeBIP0049Plus,
-		expectedScriptLen: 23,
+		name:               "BIP049 nested P2WKH",
+		scope:              waddrmgr.KeyScopeBIP0049Plus,
+		expectedScriptLen:  23,
+		expectedWitnessLen: 2,
+	}, {
+		name:               "BIP044 P2PKH",
+		scope:              waddrmgr.KeyScopeBIP0044,
+		expectedScriptLen:  -1,
+		expectedWitnessLen: 0,
 	}}
 
 	w, cleanup := testWallet(t)
@@ -38,13 +46,16 @@ func TestComputeInputScript(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			runTestCase(t, w, tc.scope, tc.expectedScriptLen)
+			runTestCase(
+				t, w, tc.scope, tc.expectedScriptLen,
+				tc.expectedWitnessLen,
+			)
 		})
 	}
 }
 
 func runTestCase(t *testing.T, w *Wallet, scope waddrmgr.KeyScope,
-	scriptLen int) {
+	scriptLen, witnessLen int) {
 
 	// Create an address we can use to send some coins to.
 	addr, err := w.CurrentAddress(0, scope)
@@ -88,13 +99,16 @@ func runTestCase(t *testing.T, w *Wallet, scope waddrmgr.KeyScope,
 	if err != nil {
 		t.Fatalf("error computing input script: %v", err)
 	}
-	if len(script) != scriptLen {
+	if scriptLen < 0 && len(script) == 0 {
+		t.Fatal("expected non-empty signature script")
+	}
+	if scriptLen >= 0 && len(script) != scriptLen {
 		t.Fatalf("unexpected script length, got %d wanted %d",
 			len(script), scriptLen)
 	}
-	if len(witness) != 2 {
+	if len(witness) != witnessLen {
 		t.Fatalf("unexpected witness stack length, got %d, wanted %d",
-			len(witness), 2)
+			len(witness), witnessLen)
 	}
 
 	// Finally verify that the created witness is valid.

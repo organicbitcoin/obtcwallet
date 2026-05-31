@@ -16,7 +16,7 @@ import (
 
 // ScriptForOutput returns the address, witness program and redeem script for a
 // given UTXO. An error is returned if the UTXO does not belong to our wallet or
-// it is not a managed pubKey address.
+// it is not a managed public key address.
 func (w *Wallet) ScriptForOutput(output *wire.TxOut) (
 	waddrmgr.ManagedPubKeyAddress, []byte, []byte, error) {
 
@@ -30,7 +30,7 @@ func (w *Wallet) ScriptForOutput(output *wire.TxOut) (
 	pubKeyAddr, ok := walletAddr.(waddrmgr.ManagedPubKeyAddress)
 	if !ok {
 		return nil, nil, nil, fmt.Errorf("address %s is not a "+
-			"p2wkh or np2wkh address", walletAddr.Address())
+			"managed public key address", walletAddr.Address())
 	}
 
 	var (
@@ -67,11 +67,8 @@ func (w *Wallet) ScriptForOutput(output *wire.TxOut) (
 			return nil, nil, nil, err
 		}
 
-	// Otherwise, this is a regular p2wkh or p2tr output, so we include the
-	// witness program itself as the subscript to generate the proper
-	// sighash digest. As part of the new sighash digest algorithm, the
-	// p2wkh witness program will be expanded into a regular p2kh
-	// script.
+	// Otherwise, this is a regular p2pkh, p2wkh or p2tr output. Return the
+	// output script for the signer to use as the subscript.
 	default:
 		witnessProgram = output.PkScript
 	}
@@ -85,8 +82,8 @@ type PrivKeyTweaker func(*btcec.PrivateKey) (*btcec.PrivateKey, error)
 
 // ComputeInputScript generates a complete InputScript for the passed
 // transaction with the signature as defined within the passed SignDescriptor.
-// This method is capable of generating the proper input script for both
-// regular p2wkh output and p2wkh outputs nested within a regular p2sh output.
+// This method is capable of generating the proper input script for p2pkh,
+// regular p2wkh and p2wkh outputs nested within a regular p2sh output.
 func (w *Wallet) ComputeInputScript(tx *wire.MsgTx, output *wire.TxOut,
 	inputIndex int, sigHashes *txscript.TxSigHashes,
 	hashType txscript.SigHashType, tweaker PrivKeyTweaker) (wire.TxWitness,
@@ -130,10 +127,22 @@ func (w *Wallet) ComputeInputScript(tx *wire.MsgTx, output *wire.TxOut,
 		return witnessScript, nil, nil
 	}
 
+	if txscript.IsPayToPubKeyHash(output.PkScript) {
+		signatureScript, err := txscript.SignatureScript(
+			tx, inputIndex, output.PkScript, hashType, privKey,
+			walletAddr.Compressed(),
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return nil, signatureScript, nil
+	}
+
 	// Generate a valid witness stack for the input.
 	witnessScript, err := txscript.WitnessSignature(
 		tx, sigHashes, inputIndex, output.Value, witnessProgram,
-		hashType, privKey, true,
+		hashType, privKey, walletAddr.Compressed(),
 	)
 	if err != nil {
 		return nil, nil, err

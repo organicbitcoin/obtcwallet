@@ -516,3 +516,58 @@ func TestFinalizePsbt(t *testing.T) {
 		t.Fatalf("error validating tx: %v", err)
 	}
 }
+
+func TestFundAndFinalizePsbtLegacyInput(t *testing.T) {
+	t.Parallel()
+
+	w, cleanup := testWallet(t)
+	defer cleanup()
+
+	addr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0044)
+	require.NoError(t, err)
+	p2pkhScript, err := txscript.PayToAddrScript(addr)
+	require.NoError(t, err)
+
+	const utxoAmount = 1000000
+	incomingTx := &wire.MsgTx{
+		TxIn: []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{{
+			Value:    utxoAmount,
+			PkScript: p2pkhScript,
+		}},
+	}
+	addUtxo(t, w, incomingTx)
+
+	packet := &psbt.Packet{
+		UnsignedTx: &wire.MsgTx{
+			TxIn: []*wire.TxIn{{
+				PreviousOutPoint: wire.OutPoint{
+					Hash:  incomingTx.TxHash(),
+					Index: 0,
+				},
+			}},
+		},
+		Inputs: []psbt.PInput{{}},
+	}
+
+	_, err = w.FundPsbt(
+		packet, nil, 1, 0, 20000, CoinSelectionLargest,
+	)
+	require.NoError(t, err)
+	require.Len(t, packet.Inputs, 1)
+	require.NotNil(t, packet.Inputs[0].NonWitnessUtxo)
+	require.Nil(t, packet.Inputs[0].WitnessUtxo)
+
+	err = w.FinalizePsbt(nil, 0, packet)
+	require.NoError(t, err)
+
+	finalTx, err := psbt.Extract(packet)
+	require.NoError(t, err)
+	require.NotEmpty(t, finalTx.TxIn[0].SignatureScript)
+	require.Empty(t, finalTx.TxIn[0].Witness)
+
+	err = validateMsgTx(
+		finalTx, [][]byte{p2pkhScript}, []btcutil.Amount{utxoAmount},
+	)
+	require.NoError(t, err)
+}

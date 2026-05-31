@@ -461,16 +461,20 @@ func runRenewAllOnce(client agentWalletClient, filter renewFilter,
 	}
 	printWarnings(stderr, "[expiry-risk] ", expiryResp.GetMeta().GetWarnings())
 
-	selected := selectOutpoints(
+	candidates := selectOutpoints(
 		expiryItemsFromResponse(expiryResp.GetItems()),
-		opts.BatchLimit, filter,
+		0, filter,
 	)
-	if len(selected) == 0 {
+	if len(candidates) == 0 {
 		fmt.Fprintln(stdout, "no renew candidates selected")
 		return nil
 	}
 
 	if opts.DryRun {
+		selected := candidates
+		if opts.BatchLimit > 0 && len(selected) > opts.BatchLimit {
+			selected = selected[:opts.BatchLimit]
+		}
 		fmt.Fprintf(stdout, "selected %d outpoints:\n", len(selected))
 		for _, op := range selected {
 			fmt.Fprintln(stdout, op)
@@ -497,7 +501,12 @@ func runRenewAllOnce(client agentWalletClient, filter renewFilter,
 	}
 	defer closeExecutionSession(client, session, stderr)
 
-	for i, outpoint := range selected {
+	renewed := 0
+	for i, outpoint := range candidates {
+		if opts.BatchLimit > 0 && renewed >= opts.BatchLimit {
+			break
+		}
+
 		ctx, cancel = withRPCTimeout()
 		previewResp, err := client.PreviewRenewal(ctx, &pb.PreviewRenewalRequest{
 			Meta: &pb.RequestMeta{
@@ -518,11 +527,11 @@ func runRenewAllOnce(client agentWalletClient, filter renewFilter,
 		cancel()
 		if err != nil {
 			fmt.Fprintf(stderr, "[%d/%d] preview failed for %s: %v\n",
-				i+1, len(selected), outpoint, err)
+				i+1, len(candidates), outpoint, err)
 			continue
 		}
 		printWarnings(stderr, fmt.Sprintf("[%d/%d] preview warning for %s: ",
-			i+1, len(selected), outpoint), previewResp.GetMeta().GetWarnings())
+			i+1, len(candidates), outpoint), previewResp.GetMeta().GetWarnings())
 
 		ctx, cancel = withRPCTimeout()
 		submitResp, err := client.SubmitRenewal(ctx, &pb.SubmitRenewalRequest{
@@ -539,14 +548,15 @@ func runRenewAllOnce(client agentWalletClient, filter renewFilter,
 		cancel()
 		if err != nil {
 			fmt.Fprintf(stderr, "[%d/%d] renew failed for %s: %v\n",
-				i+1, len(selected), outpoint, err)
+				i+1, len(candidates), outpoint, err)
 			continue
 		}
 		printWarnings(stderr, fmt.Sprintf("[%d/%d] submit warning for %s: ",
-			i+1, len(selected), outpoint), submitResp.GetMeta().GetWarnings())
+			i+1, len(candidates), outpoint), submitResp.GetMeta().GetWarnings())
 		fmt.Fprintf(stdout, "[%d/%d] renewed %s txid=%s operation_id=%s\n",
-			i+1, len(selected), outpoint, submitResp.GetTxid(),
+			i+1, len(candidates), outpoint, submitResp.GetTxid(),
 			submitResp.GetOperation().GetOperationId())
+		renewed++
 	}
 
 	return nil

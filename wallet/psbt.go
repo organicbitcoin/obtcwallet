@@ -149,6 +149,20 @@ func (w *Wallet) FundPsbt(packet *psbt.Packet, keyScope *waddrmgr.KeyScope,
 		credits := make([]wtxmgr.Credit, len(txIn))
 		for idx, in := range txIn {
 			utxo := packet.Inputs[idx].WitnessUtxo
+			if utxo == nil && packet.Inputs[idx].NonWitnessUtxo != nil {
+				prevIndex := in.PreviousOutPoint.Index
+				prevTxOuts := packet.Inputs[idx].NonWitnessUtxo.TxOut
+				if prevIndex >= uint32(len(prevTxOuts)) {
+					return 0, fmt.Errorf("input %d references output "+
+						"%d but previous transaction only has %d "+
+						"outputs", idx, prevIndex, len(prevTxOuts))
+				}
+				utxo = prevTxOuts[prevIndex]
+			}
+			if utxo == nil {
+				return 0, fmt.Errorf("input %d is missing UTXO "+
+					"information", idx)
+			}
 			credits[idx] = wtxmgr.Credit{
 				OutPoint: in.PreviousOutPoint,
 				Amount:   btcutil.Amount(utxo.Value),
@@ -290,6 +304,12 @@ func (w *Wallet) DecorateInputs(packet *psbt.Packet, failOnUnknown bool) error {
 				w.signatureHashType(txscript.SigHashDefault),
 			)
 
+		case txscript.IsPayToPubKeyHash(utxo.PkScript):
+			addInputInfoLegacy(
+				&packet.Inputs[idx], tx, derivationPath,
+				w.signatureHashType(txscript.SigHashAll),
+			)
+
 		default:
 			addInputInfoSegWitV0(
 				&packet.Inputs[idx], tx, utxo, derivationPath,
@@ -300,6 +320,18 @@ func (w *Wallet) DecorateInputs(packet *psbt.Packet, failOnUnknown bool) error {
 	}
 
 	return nil
+}
+
+// addInputInfoLegacy adds the UTXO and BIP32 derivation info for a legacy
+// P2PKH PSBT input.
+func addInputInfoLegacy(in *psbt.PInput, prevTx *wire.MsgTx,
+	derivationInfo *psbt.Bip32Derivation, hashType txscript.SigHashType) {
+
+	in.NonWitnessUtxo = prevTx
+	in.SighashType = hashType
+	in.Bip32Derivation = []*psbt.Bip32Derivation{
+		derivationInfo,
+	}
 }
 
 // addInputInfoSegWitV0 adds the UTXO and BIP32 derivation info for a SegWit v0
@@ -529,15 +561,20 @@ func (w *Wallet) FinalizePsbt(keyScope *waddrmgr.KeyScope, account uint32,
 				"input %d: %w", idx, err)
 		}
 
-		// Serialize the witness format from the stack representation to
-		// the wire representation.
-		var witnessBytes bytes.Buffer
-		err = psbt.WriteTxWitness(&witnessBytes, witness)
-		if err != nil {
-			return fmt.Errorf("error serializing witness: %w", err)
+		if len(witness) > 0 {
+			// Serialize the witness format from the stack
+			// representation to the wire representation.
+			var witnessBytes bytes.Buffer
+			err = psbt.WriteTxWitness(&witnessBytes, witness)
+			if err != nil {
+				return fmt.Errorf("error serializing witness: %w",
+					err)
+			}
+			packet.Inputs[idx].FinalScriptWitness = witnessBytes.Bytes()
 		}
-		packet.Inputs[idx].FinalScriptWitness = witnessBytes.Bytes()
-		packet.Inputs[idx].FinalScriptSig = sigScript
+		if len(sigScript) > 0 {
+			packet.Inputs[idx].FinalScriptSig = sigScript
+		}
 	}
 
 	// Make sure the PSBT itself thinks it's finalized and ready to be
