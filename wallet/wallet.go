@@ -3660,6 +3660,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	additionalKeysByAddress map[string]*btcutil.WIF,
 	p2shRedeemScriptsByAddress map[string][]byte) ([]SignatureError, error) {
 
+	hashType = w.signatureHashType(hashType)
 	var signErrors []SignatureError
 	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
@@ -3765,7 +3766,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 			// Find out if it is completely satisfied or still needs more.
 			vm, err := txscript.NewEngine(
 				prevOutScript, tx, i,
-				txscript.StandardVerifyFlags, nil, nil, 0,
+				w.scriptVerifyFlags(), nil, nil, 0,
 				inputFetcher,
 			)
 			if err == nil {

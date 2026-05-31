@@ -287,12 +287,14 @@ func (w *Wallet) DecorateInputs(packet *psbt.Packet, failOnUnknown bool) error {
 		case txscript.IsPayToTaproot(utxo.PkScript):
 			addInputInfoSegWitV1(
 				&packet.Inputs[idx], utxo, derivationPath,
+				w.signatureHashType(txscript.SigHashDefault),
 			)
 
 		default:
 			addInputInfoSegWitV0(
 				&packet.Inputs[idx], tx, utxo, derivationPath,
 				addr, witnessProgram,
+				w.signatureHashType(txscript.SigHashAll),
 			)
 		}
 	}
@@ -304,7 +306,7 @@ func (w *Wallet) DecorateInputs(packet *psbt.Packet, failOnUnknown bool) error {
 // PSBT input (p2wkh, np2wkh) from the given wallet information.
 func addInputInfoSegWitV0(in *psbt.PInput, prevTx *wire.MsgTx, utxo *wire.TxOut,
 	derivationInfo *psbt.Bip32Derivation, addr waddrmgr.ManagedAddress,
-	witnessProgram []byte) {
+	witnessProgram []byte, hashType txscript.SigHashType) {
 
 	// As a fix for CVE-2020-14199 we have to always include the full
 	// non-witness UTXO in the PSBT for segwit v0.
@@ -316,7 +318,7 @@ func addInputInfoSegWitV0(in *psbt.PInput, prevTx *wire.MsgTx, utxo *wire.TxOut,
 		Value:    utxo.Value,
 		PkScript: utxo.PkScript,
 	}
-	in.SighashType = txscript.SigHashAll
+	in.SighashType = hashType
 
 	// Include the derivation path for each input.
 	in.Bip32Derivation = []*psbt.Bip32Derivation{
@@ -334,14 +336,14 @@ func addInputInfoSegWitV0(in *psbt.PInput, prevTx *wire.MsgTx, utxo *wire.TxOut,
 // addInputInfoSegWitV0 adds the UTXO and BIP32 derivation info for a SegWit v1
 // PSBT input (p2tr) from the given wallet information.
 func addInputInfoSegWitV1(in *psbt.PInput, utxo *wire.TxOut,
-	derivationInfo *psbt.Bip32Derivation) {
+	derivationInfo *psbt.Bip32Derivation, hashType txscript.SigHashType) {
 
 	// For SegWit v1 we only need the witness UTXO information.
 	in.WitnessUtxo = &wire.TxOut{
 		Value:    utxo.Value,
 		PkScript: utxo.PkScript,
 	}
-	in.SighashType = txscript.SigHashDefault
+	in.SighashType = hashType
 
 	// Include the derivation path for each input in addition to the
 	// taproot specific info we have below.

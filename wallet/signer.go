@@ -92,6 +92,7 @@ func (w *Wallet) ComputeInputScript(tx *wire.MsgTx, output *wire.TxOut,
 	hashType txscript.SigHashType, tweaker PrivKeyTweaker) (wire.TxWitness,
 	[]byte, error) {
 
+	hashType = w.signatureHashType(hashType)
 	walletAddr, witnessProgram, sigScript, err := w.ScriptForOutput(output)
 	if err != nil {
 		return nil, nil, err
@@ -112,11 +113,15 @@ func (w *Wallet) ComputeInputScript(tx *wire.MsgTx, output *wire.TxOut,
 
 	// We need to produce a Schnorr signature for p2tr key spend addresses.
 	if txscript.IsPayToTaproot(output.PkScript) {
+		var opts []txscript.TaprootSigHashOption
+		if hashType&txscript.SigHashOBTCReplayProtection != 0 {
+			opts = append(opts, txscript.WithOBTCReplayProtectionSighash())
+		}
 		// We can now generate a valid witness which will allow us to
 		// spend this output.
 		witnessScript, err := txscript.TaprootWitnessSignature(
 			tx, sigHashes, inputIndex, output.Value,
-			output.PkScript, hashType, privKey,
+			output.PkScript, hashType, privKey, opts...,
 		)
 		if err != nil {
 			return nil, nil, err

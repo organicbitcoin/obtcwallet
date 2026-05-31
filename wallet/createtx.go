@@ -303,15 +303,17 @@ func (w *Wallet) txToOutputs(outputs []*wire.TxOut,
 			return err
 		}
 		if !watchOnly {
-			err = tx.AddAllInputScripts(
+			err = tx.AddAllInputScriptsWithHashType(
 				secretSource{w.Manager, addrmgrNs},
+				w.signatureHashType(txscript.SigHashAll),
 			)
 			if err != nil {
 				return err
 			}
 
-			err = validateMsgTx(
+			err = validateMsgTxWithFlags(
 				tx.Tx, tx.PrevScripts, tx.PrevInputValues,
+				w.scriptVerifyFlags(),
 			)
 			if err != nil {
 				return err
@@ -523,6 +525,14 @@ func (w *Wallet) addrMgrWithChangeSource(dbtx walletdb.ReadWriteTx,
 func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte,
 	inputValues []btcutil.Amount) error {
 
+	return validateMsgTxWithFlags(
+		tx, prevScripts, inputValues, txscript.StandardVerifyFlags,
+	)
+}
+
+func validateMsgTxWithFlags(tx *wire.MsgTx, prevScripts [][]byte,
+	inputValues []btcutil.Amount, flags txscript.ScriptFlags) error {
+
 	inputFetcher, err := txauthor.TXPrevOutFetcher(
 		tx, prevScripts, inputValues,
 	)
@@ -533,7 +543,7 @@ func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte,
 	hashCache := txscript.NewTxSigHashes(tx, inputFetcher)
 	for i, prevScript := range prevScripts {
 		vm, err := txscript.NewEngine(
-			prevScript, tx, i, txscript.StandardVerifyFlags, nil,
+			prevScript, tx, i, flags, nil,
 			hashCache, int64(inputValues[i]), inputFetcher,
 		)
 		if err != nil {

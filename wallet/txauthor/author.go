@@ -208,6 +208,17 @@ type SecretsSource interface {
 func AddAllInputScripts(tx *wire.MsgTx, prevPkScripts [][]byte,
 	inputValues []btcutil.Amount, secrets SecretsSource) error {
 
+	return AddAllInputScriptsWithHashType(
+		tx, prevPkScripts, inputValues, secrets, txscript.SigHashAll,
+	)
+}
+
+// AddAllInputScriptsWithHashType modifies a transaction by adding input
+// scripts for each input using the requested signature hash type.
+func AddAllInputScriptsWithHashType(tx *wire.MsgTx, prevPkScripts [][]byte,
+	inputValues []btcutil.Amount, secrets SecretsSource,
+	hashType txscript.SigHashType) error {
+
 	inputFetcher, err := TXPrevOutFetcher(tx, prevPkScripts, inputValues)
 	if err != nil {
 		return err
@@ -233,7 +244,7 @@ func AddAllInputScripts(tx *wire.MsgTx, prevPkScripts [][]byte,
 		case txscript.IsPayToScriptHash(pkScript):
 			err := spendNestedWitnessPubKeyHash(
 				inputs[i], pkScript, int64(inputValues[i]),
-				chainParams, secrets, tx, hashCache, i,
+				chainParams, secrets, tx, hashCache, i, hashType,
 			)
 			if err != nil {
 				return err
@@ -242,7 +253,7 @@ func AddAllInputScripts(tx *wire.MsgTx, prevPkScripts [][]byte,
 		case txscript.IsPayToWitnessPubKeyHash(pkScript):
 			err := spendWitnessKeyHash(
 				inputs[i], pkScript, int64(inputValues[i]),
-				chainParams, secrets, tx, hashCache, i,
+				chainParams, secrets, tx, hashCache, i, hashType,
 			)
 			if err != nil {
 				return err
@@ -251,7 +262,7 @@ func AddAllInputScripts(tx *wire.MsgTx, prevPkScripts [][]byte,
 		case txscript.IsPayToTaproot(pkScript):
 			err := spendTaprootKey(
 				inputs[i], pkScript, int64(inputValues[i]),
-				chainParams, secrets, tx, hashCache, i,
+				chainParams, secrets, tx, hashCache, i, hashType,
 			)
 			if err != nil {
 				return err
@@ -260,7 +271,7 @@ func AddAllInputScripts(tx *wire.MsgTx, prevPkScripts [][]byte,
 		default:
 			sigScript := inputs[i].SignatureScript
 			script, err := txscript.SignTxOutput(chainParams, tx, i,
-				pkScript, txscript.SigHashAll, secrets, secrets,
+				pkScript, hashType, secrets, secrets,
 				sigScript)
 			if err != nil {
 				return err
@@ -279,7 +290,8 @@ func AddAllInputScripts(tx *wire.MsgTx, prevPkScripts [][]byte,
 // the input value in the sighash.
 func spendWitnessKeyHash(txIn *wire.TxIn, pkScript []byte,
 	inputValue int64, chainParams *chaincfg.Params, secrets SecretsSource,
-	tx *wire.MsgTx, hashCache *txscript.TxSigHashes, idx int) error {
+	tx *wire.MsgTx, hashCache *txscript.TxSigHashes, idx int,
+	hashType txscript.SigHashType) error {
 
 	// First obtain the key pair associated with this p2wkh address.
 	_, addrs, _, err := txscript.ExtractPkScriptAddrs(pkScript,
@@ -314,7 +326,7 @@ func spendWitnessKeyHash(txIn *wire.TxIn, pkScript []byte,
 		return err
 	}
 	witnessScript, err := txscript.WitnessSignature(tx, hashCache, idx,
-		inputValue, witnessProgram, txscript.SigHashAll, privKey, true)
+		inputValue, witnessProgram, hashType, privKey, true)
 	if err != nil {
 		return err
 	}
@@ -331,7 +343,8 @@ func spendWitnessKeyHash(txIn *wire.TxIn, pkScript []byte,
 // the input value in the sighash.
 func spendTaprootKey(txIn *wire.TxIn, pkScript []byte,
 	inputValue int64, chainParams *chaincfg.Params, secrets SecretsSource,
-	tx *wire.MsgTx, hashCache *txscript.TxSigHashes, idx int) error {
+	tx *wire.MsgTx, hashCache *txscript.TxSigHashes, idx int,
+	hashType txscript.SigHashType) error {
 
 	// First obtain the key pair associated with this p2tr address. If the
 	// pkScript is incorrect or derived from a different internal key or
@@ -348,9 +361,15 @@ func spendTaprootKey(txIn *wire.TxIn, pkScript []byte,
 
 	// We can now generate a valid witness which will allow us to spend this
 	// output.
+	taprootHashType := txscript.SigHashDefault
+	var opts []txscript.TaprootSigHashOption
+	if hashType&txscript.SigHashOBTCReplayProtection != 0 {
+		taprootHashType = hashType
+		opts = append(opts, txscript.WithOBTCReplayProtectionSighash())
+	}
 	witnessScript, err := txscript.TaprootWitnessSignature(
 		tx, hashCache, idx, inputValue, pkScript,
-		txscript.SigHashDefault, privKey,
+		taprootHashType, privKey, opts...,
 	)
 	if err != nil {
 		return err
@@ -370,7 +389,8 @@ func spendTaprootKey(txIn *wire.TxIn, pkScript []byte,
 // digest algorithm defined in BIP0143 includes the input value in the sighash.
 func spendNestedWitnessPubKeyHash(txIn *wire.TxIn, pkScript []byte,
 	inputValue int64, chainParams *chaincfg.Params, secrets SecretsSource,
-	tx *wire.MsgTx, hashCache *txscript.TxSigHashes, idx int) error {
+	tx *wire.MsgTx, hashCache *txscript.TxSigHashes, idx int,
+	hashType txscript.SigHashType) error {
 
 	// First we need to obtain the key pair related to this p2sh output.
 	_, addrs, _, err := txscript.ExtractPkScriptAddrs(pkScript,
@@ -414,7 +434,7 @@ func spendNestedWitnessPubKeyHash(txIn *wire.TxIn, pkScript []byte,
 	// With the sigScript in place, we'll next generate the proper witness
 	// that'll allow us to spend the p2wkh output.
 	witnessScript, err := txscript.WitnessSignature(tx, hashCache, idx,
-		inputValue, witnessProgram, txscript.SigHashAll, privKey, compressed)
+		inputValue, witnessProgram, hashType, privKey, compressed)
 	if err != nil {
 		return err
 	}
@@ -430,6 +450,16 @@ func spendNestedWitnessPubKeyHash(txIn *wire.TxIn, pkScript []byte,
 func (tx *AuthoredTx) AddAllInputScripts(secrets SecretsSource) error {
 	return AddAllInputScripts(
 		tx.Tx, tx.PrevScripts, tx.PrevInputValues, secrets,
+	)
+}
+
+// AddAllInputScriptsWithHashType modifies an authored transaction by adding
+// input scripts using the requested signature hash type.
+func (tx *AuthoredTx) AddAllInputScriptsWithHashType(secrets SecretsSource,
+	hashType txscript.SigHashType) error {
+
+	return AddAllInputScriptsWithHashType(
+		tx.Tx, tx.PrevScripts, tx.PrevInputValues, secrets, hashType,
 	)
 }
 

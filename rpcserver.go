@@ -168,7 +168,7 @@ func startRPCServers(walletLoader *wallet.Loader) (*experimentalRPCServer, *lega
 		err                error
 	)
 	if cfg.DisableServerTLS {
-		log.Info("Server TLS is disabled.  Only legacy RPC may be used")
+		log.Info("Server TLS is disabled")
 	} else {
 		keyPair, err = openRPCKeyPair()
 		if err != nil {
@@ -184,21 +184,27 @@ func startRPCServers(walletLoader *wallet.Loader) (*experimentalRPCServer, *lega
 		legacyListen = func(net string, laddr string) (net.Listener, error) {
 			return tls.Listen(net, laddr, tlsConfig)
 		}
+	}
 
-		if len(cfg.ExperimentalRPCListeners) != 0 {
-			listeners := makeListeners(cfg.ExperimentalRPCListeners, net.Listen)
-			if len(listeners) == 0 {
-				err := errors.New("failed to create listeners for RPC server")
-				return nil, nil, err
-			}
+	if len(cfg.ExperimentalRPCListeners) != 0 {
+		listeners := makeListeners(cfg.ExperimentalRPCListeners, net.Listen)
+		if len(listeners) == 0 {
+			err := errors.New("failed to create listeners for RPC server")
+			return nil, nil, err
+		}
+
+		var server *grpc.Server
+		if cfg.DisableServerTLS {
+			server = grpc.NewServer()
+		} else {
 			creds := credentials.NewServerTLSFromCert(&keyPair)
-			server := grpc.NewServer(grpc.Creds(creds))
-			rpcserver.StartVersionService(server)
-			rpcserver.StartWalletLoaderService(server, walletLoader, activeNet)
-			experimentalServer = &experimentalRPCServer{
-				server:    server,
-				listeners: listeners,
-			}
+			server = grpc.NewServer(grpc.Creds(creds))
+		}
+		rpcserver.StartVersionService(server)
+		rpcserver.StartWalletLoaderService(server, walletLoader, activeNet)
+		experimentalServer = &experimentalRPCServer{
+			server:    server,
+			listeners: listeners,
 		}
 	}
 

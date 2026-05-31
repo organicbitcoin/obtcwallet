@@ -58,6 +58,8 @@ require (
 
 replace github.com/btcsuite/btcd => ../obtcd
 
+replace github.com/btcsuite/btcwallet/wallet/txauthor => ./wallet/txauthor
+
 // If you change this please run `make lint` to see where else it needs to be
 // updated as well.
 go 1.24.6
