@@ -337,6 +337,18 @@ func requireExecutionBackend(state *pb.WalletState) error {
 	return nil
 }
 
+func requireChainSynced(state *pb.WalletState) error {
+	if state == nil {
+		return fmt.Errorf("wallet state not returned by agent API")
+	}
+	if state.GetChainSynced() {
+		return nil
+	}
+
+	return fmt.Errorf("wallet chain state is not synced at height %d",
+		state.GetCurrentBlockHeight())
+}
+
 func openExecutionSession(client agentWalletClient, stderr io.Writer) (*executionSession, error) {
 	ctx, cancel := withRPCTimeout()
 	defer cancel()
@@ -446,6 +458,9 @@ func runRenewAllOnce(client agentWalletClient, filter renewFilter,
 		return fmt.Errorf("GetWalletState failed: %w", err)
 	}
 	printWarnings(stderr, "[wallet-state] ", stateResp.GetMeta().GetWarnings())
+	if err := requireChainSynced(stateResp.GetState()); err != nil {
+		return err
+	}
 
 	ctx, cancel = withRPCTimeout()
 	expiryResp, err := client.GetExpiryRisk(ctx, &pb.GetExpiryRiskRequest{

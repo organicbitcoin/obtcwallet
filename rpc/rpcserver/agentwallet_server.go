@@ -219,6 +219,9 @@ func (s *agentWalletServer) ListUtxos(_ context.Context,
 func (s *agentWalletServer) GetExpiryRisk(_ context.Context,
 	req *pb.GetExpiryRiskRequest) (*pb.GetExpiryRiskResponse, error) {
 
+	if err := s.ensureChainSynced(); err != nil {
+		return nil, err
+	}
 	if err := validateAccountAndMinConfs(
 		req.AccountNumber, req.MinConfirmations,
 	); err != nil {
@@ -271,6 +274,9 @@ func (s *agentWalletServer) PreviewRenewal(_ context.Context,
 	req *pb.PreviewRenewalRequest) (*pb.PreviewRenewalResponse, error) {
 
 	if err := s.ensurePersistenceLoaded(); err != nil {
+		return nil, err
+	}
+	if err := s.ensureChainSynced(); err != nil {
 		return nil, err
 	}
 	if err := validateAccountAndMinConfs(
@@ -887,6 +893,25 @@ func (s *agentWalletServer) ensurePersistenceLoaded() error {
 	return nil
 }
 
+func (s *agentWalletServer) ensureChainSynced() error {
+	if s.wallet == nil {
+		return status.Error(codes.FailedPrecondition,
+			"wallet is unavailable")
+	}
+	if s.wallet.ChainSynced() {
+		return nil
+	}
+
+	var height int32
+	if s.wallet.Manager != nil {
+		height = s.wallet.SyncedTo().Height
+	}
+
+	return status.Errorf(codes.FailedPrecondition,
+		"wallet chain state is not synced at height %d",
+		height)
+}
+
 func (s *agentWalletServer) markReservationReleased(reservationID string,
 	releasedAtUnix int64) error {
 
@@ -1089,6 +1114,9 @@ func (s *agentWalletServer) signRenewalOperation(operationID,
 			operationID, op.State)
 	}
 
+	if err := s.ensureChainSynced(); err != nil {
+		return nil, nil, nil, err
+	}
 	if s.wallet.Manager.WatchOnly() {
 		return nil, nil, nil, status.Error(codes.FailedPrecondition,
 			"wallet is watch-only; use PreviewRenewal and an external signing flow")
@@ -1250,6 +1278,9 @@ func (s *agentWalletServer) publishRenewalOperation(operationID string,
 			operationID, op.State)
 	}
 
+	if err := s.ensureChainSynced(); err != nil {
+		return nil, nil, nil, err
+	}
 	selectedOutputs, selectedOutpoints, targetAddr, targetPkScript, err :=
 		s.selectedOutputsForOperation(op, false)
 	if err != nil {

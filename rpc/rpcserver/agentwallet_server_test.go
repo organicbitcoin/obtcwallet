@@ -592,6 +592,108 @@ func TestSubmitRenewalAlreadyPublishedReturnsRecordedMetadata(t *testing.T) {
 	}
 }
 
+func TestGetExpiryRiskRejectsUnsyncedWallet(t *testing.T) {
+	server := &agentWalletServer{
+		wallet: &wallet.Wallet{},
+	}
+
+	_, err := server.GetExpiryRisk(context.Background(),
+		&pb.GetExpiryRiskRequest{},
+	)
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected failed precondition, got %v", err)
+	}
+	if err == nil || err.Error() != "rpc error: code = FailedPrecondition desc = wallet chain state is not synced at height 0" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPreviewRenewalRejectsUnsyncedWallet(t *testing.T) {
+	server := &agentWalletServer{
+		wallet:       &wallet.Wallet{},
+		operations:   make(map[string]*pb.Operation),
+		artifacts:    make(map[string]*agentOperationArtifacts),
+		reservations: make(map[string]*agentReservationRecord),
+	}
+	server.persistenceLoadOnce.Do(func() {})
+
+	_, err := server.PreviewRenewal(context.Background(),
+		&pb.PreviewRenewalRequest{
+			TargetAmountSat: 1,
+		},
+	)
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected failed precondition, got %v", err)
+	}
+}
+
+func TestSubmitRenewalRejectsUnsyncedDraftOperation(t *testing.T) {
+	server := &agentWalletServer{
+		wallet: &wallet.Wallet{},
+		operations: map[string]*pb.Operation{
+			"op_1": {
+				OperationId:         "op_1",
+				WalletId:            defaultAgentWalletID,
+				Kind:                operationKindRenewSubmit,
+				State:               operationStateDraft,
+				CreatorPrincipal:    "agent:bot",
+				CreatorCapabilityId: "cap_1",
+				Summary: &pb.TransactionSummary{
+					TargetAmountSat: 2000,
+				},
+			},
+		},
+		artifacts: map[string]*agentOperationArtifacts{
+			"op_1": {OperationID: "op_1"},
+		},
+		capabilities: map[string]*agentCapabilityRecord{
+			"cap_1": {
+				CapabilityID:  "cap_1",
+				WalletID:      defaultAgentWalletID,
+				Principal:     "agent:bot",
+				Permissions:   []string{capabilityPermissionRenewalSubmit},
+				CreatedAtUnix: 100,
+				ExpiresAtUnix: time.Now().Add(time.Hour).Unix(),
+				UpdatedAtUnix: 100,
+			},
+		},
+		signerSessions: map[string]*agentSignerSessionRecord{
+			"sess_1": {
+				SignerSessionID: "sess_1",
+				WalletID:        defaultAgentWalletID,
+				CapabilityID:    "cap_1",
+				Principal:       "agent:bot",
+				Permissions:     []string{capabilityPermissionRenewalSubmit},
+				CreatedAtUnix:   100,
+				ExpiresAtUnix:   time.Now().Add(time.Hour).Unix(),
+				UpdatedAtUnix:   100,
+			},
+		},
+		reservations: make(map[string]*agentReservationRecord),
+		signerBackend: &testSignerBackend{
+			activeSessions: map[string]struct{}{
+				"sess_1": {},
+			},
+		},
+	}
+	server.persistenceLoadOnce.Do(func() {})
+
+	_, err := server.SubmitRenewal(context.Background(),
+		&pb.SubmitRenewalRequest{
+			Meta: &pb.RequestMeta{
+				RequestId:    "req_1",
+				Principal:    "agent:bot",
+				CapabilityId: "cap_1",
+			},
+			OperationId:     "op_1",
+			SignerSessionId: "sess_1",
+		},
+	)
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected failed precondition, got %v", err)
+	}
+}
+
 func TestSignPsbtAlreadySignedReturnsRecordedMetadata(t *testing.T) {
 	psbtBytes := testPsbtBytes(t)
 	txBytes := testTxBytes(t)

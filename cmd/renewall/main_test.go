@@ -282,7 +282,8 @@ func TestRunRenewAllOnceDryRunUsesAgentRiskQuery(t *testing.T) {
 		getWalletStateResp: &pb.GetWalletStateResponse{
 			Meta: &pb.ResponseMeta{},
 			State: &pb.WalletState{
-				WalletId: opts.WalletID,
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
 				SignerBackend: &pb.SignerBackendInfo{
 					Mode: "local",
 				},
@@ -319,6 +320,43 @@ func TestRunRenewAllOnceDryRunUsesAgentRiskQuery(t *testing.T) {
 	}
 }
 
+func TestRunRenewAllOnceRejectsUnsyncedWalletState(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = true
+
+	filter, err := newRenewFilter(false, -1, -1)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId:           opts.WalletID,
+				ChainSynced:        false,
+				CurrentBlockHeight: 481,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = runRenewAllOnce(client, filter, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "wallet chain state is not synced at height 481") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(client.getExpiryRiskReqs) != 0 {
+		t.Fatalf("unsynced wallet should stop before GetExpiryRisk")
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("unexpected output stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
 func TestRunRenewAllOnceExecutesViaAgentFlow(t *testing.T) {
 	useTestOpts(t)
 	opts.DryRun = false
@@ -336,7 +374,8 @@ func TestRunRenewAllOnceExecutesViaAgentFlow(t *testing.T) {
 		getWalletStateResp: &pb.GetWalletStateResponse{
 			Meta: &pb.ResponseMeta{},
 			State: &pb.WalletState{
-				WalletId: opts.WalletID,
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
 				SignerBackend: &pb.SignerBackendInfo{
 					Mode: "local",
 				},
@@ -487,7 +526,8 @@ func TestRunRenewAllOnceScansPastPreviewFailure(t *testing.T) {
 		getWalletStateResp: &pb.GetWalletStateResponse{
 			Meta: &pb.ResponseMeta{},
 			State: &pb.WalletState{
-				WalletId: opts.WalletID,
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
 				SignerBackend: &pb.SignerBackendInfo{
 					Mode: "local",
 				},
@@ -561,7 +601,8 @@ func TestRunRenewAllOnceRejectsPublishOnlySignerBackend(t *testing.T) {
 		getWalletStateResp: &pb.GetWalletStateResponse{
 			Meta: &pb.ResponseMeta{},
 			State: &pb.WalletState{
-				WalletId: opts.WalletID,
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
 				SignerBackend: &pb.SignerBackendInfo{
 					Mode: "publish_only",
 				},
@@ -598,7 +639,8 @@ func TestRunRenewAllOnceLocalSignerRequiresWalletPass(t *testing.T) {
 		getWalletStateResp: &pb.GetWalletStateResponse{
 			Meta: &pb.ResponseMeta{},
 			State: &pb.WalletState{
-				WalletId: opts.WalletID,
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
 				SignerBackend: &pb.SignerBackendInfo{
 					Mode: "local",
 				},
