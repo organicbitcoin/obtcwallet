@@ -43,6 +43,9 @@ Current milestone:
 - Batch renewal planning:
   - `renewall --dry-run`
 - Local signer path for controlled renewal workflows.
+- Local wallet UI:
+  - `walletapp` for balance, receive, send, expiry inspection, and manual
+    renewal through the existing legacy wallet RPC.
 
 ## Known limits
 
@@ -73,6 +76,7 @@ cd obtcwallet
 
 go build -o ./btcwallet .
 go build -o ./renewall ./cmd/renewall
+go build -o ./walletapp ./cmd/walletapp
 ```
 
 To produce a checksumed operator artifact directory for a frozen candidate
@@ -146,6 +150,24 @@ Exercise the batch renewal selector without signing or publishing:
   --notls \
   --dry-run
 ```
+
+Run the local wallet UI:
+
+```bash
+./walletapp \
+  --wallet-rpc=http://127.0.0.1:19554/ \
+  --wallet-user=walletuser \
+  --wallet-pass=walletpass
+```
+
+Open <http://127.0.0.1:19580/>.  The app is a local operator panel for an
+already-running `btcwallet` process.  It does not create or import wallets; it
+uses the legacy wallet RPC for receive addresses, temporary unlock, normal
+`sendtoaddress` transfers, `obtc.getexpiry`, and manual `obtc.renew`.
+
+By default `walletapp` refuses non-loopback listen addresses.  Passing
+`--allow-non-loopback` is an explicit operator decision and should not be used
+for reviewer laptops or unattended machines.
 
 ## RPC surfaces
 

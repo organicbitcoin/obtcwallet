@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="wallet-app-token" content="__WALLET_APP_TOKEN__" />
+    <meta name="wallet-rpc-endpoint" content="__WALLET_RPC_ENDPOINT__" />
+    <title>OBTC Wallet App</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">O</div>
+        <div>
+          <h1>OBTC Wallet</h1>
+          <p id="rpcEndpoint">Wallet RPC</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="status-pill" id="connectionState">Checking</span>
+        <button class="icon-button" id="refreshButton" type="button" title="Refresh" aria-label="Refresh">
+          <span aria-hidden="true">R</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="overview-grid" aria-label="Wallet status">
+        <article class="metric">
+          <span class="metric-label">Spendable</span>
+          <strong id="spendableBalance">--</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Total</span>
+          <strong id="totalBalance">--</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Unconfirmed</span>
+          <strong id="unconfirmedBalance">--</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Block</span>
+          <strong id="blockHeight">--</strong>
+        </article>
+      </section>
+
+      <section class="layout-grid">
+        <div class="work-column">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Receive</h2>
+              <div class="segmented" role="group" aria-label="Address type">
+                <label><input type="radio" name="addressType" value="legacy" checked /> Legacy</label>
+                <label><input type="radio" name="addressType" value="bech32" /> Bech32</label>
+                <label><input type="radio" name="addressType" value="p2sh-segwit" /> P2SH</label>
+              </div>
+            </div>
+            <div class="inline-actions">
+              <input id="receiveAddress" type="text" readonly placeholder="No address generated" />
+              <button id="newAddressButton" type="button">New</button>
+              <button id="copyAddressButton" type="button">Copy</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Send</h2>
+              <span class="lock-state" id="lockState">--</span>
+            </div>
+            <form id="sendForm" class="form-grid">
+              <label>
+                Address
+                <input id="sendAddress" name="address" autocomplete="off" required />
+              </label>
+              <label>
+                Amount
+                <input id="sendAmount" name="amount" inputmode="decimal" required />
+              </label>
+              <button type="submit">Send</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Renew</h2>
+              <div class="inline-compact">
+                <label>
+                  Limit
+                  <input id="expiryLimit" type="number" min="0" max="500" value="100" />
+                </label>
+                <button id="loadExpiryButton" type="button">Load</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Pick</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Amount</th>
+                    <th scope="col">Expiry</th>
+                    <th scope="col">Outpoint</th>
+                  </tr>
+                </thead>
+                <tbody id="expiryTableBody">
+                  <tr><td colspan="5" class="empty">No expiry data loaded</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <form id="renewForm" class="form-grid renew-form">
+              <div class="selection-summary" id="renewSelectionSummary">0 selected</div>
+              <label>
+                Fee rate
+                <span class="readonly-field" id="renewFeeRate">--</span>
+              </label>
+              <label>
+                Min confirmations
+                <select id="renewMinConf" name="minConf">
+                  <option value="0">0 confirmations</option>
+                  <option value="1" selected>1 confirmation</option>
+                  <option value="2">2 confirmations</option>
+                  <option value="6">6 confirmations</option>
+                </select>
+              </label>
+              <button id="renewSubmitButton" type="submit">Renew selected</button>
+            </form>
+            <div class="operation-status idle" id="renewStatus" role="status" aria-live="polite">Ready</div>
+            <div class="recent-renew" id="recentRenew" hidden></div>
+          </section>
+        </div>
+
+        <aside class="side-column">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Unlock</h2>
+              <button id="lockButton" type="button">Lock</button>
+            </div>
+            <form id="unlockForm" class="form-stack">
+              <label>
+                Passphrase
+                <input id="walletPassphrase" type="password" autocomplete="current-password" required />
+              </label>
+              <label>
+                Seconds
+                <input id="unlockSeconds" type="number" min="1" max="86400" value="300" />
+              </label>
+              <button type="submit">Unlock</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Activity</h2>
+              <button id="loadTransactionsButton" type="button">Reload</button>
+            </div>
+            <div class="activity-list" id="activityList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Result</h2>
+              <button id="clearResultButton" type="button">Clear</button>
+            </div>
+            <pre id="resultBox">Ready</pre>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>
