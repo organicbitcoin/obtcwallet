@@ -2,6 +2,7 @@ package rpcserver
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,6 +205,50 @@ func TestPolicyVerdictFromExpiryRisks(t *testing.T) {
 	items = append(items, &pb.ExpiryRisk{Status: string(wallet.ExpiryStatusExpired)})
 	if verdict := policyVerdictFromExpiryRisks(items); verdict != "attention_expired" {
 		t.Fatalf("unexpected verdict with expired item: %s", verdict)
+	}
+}
+
+func TestWarningsFromExpiryRisksNearExpiryBoundaries(t *testing.T) {
+	items := []*pb.ExpiryRisk{
+		{Status: string(wallet.ExpiryStatusExpiring), BlocksToExpiry: 13},
+	}
+	warnings := warningsFromExpiryRisks(items)
+	if len(warnings) != 1 ||
+		!strings.Contains(warnings[0], "inside the expiring window") {
+
+		t.Fatalf("unexpected non-near warnings: %#v", warnings)
+	}
+
+	items = []*pb.ExpiryRisk{
+		{Status: string(wallet.ExpiryStatusExpiring), BlocksToExpiry: 12},
+	}
+	warnings = warningsFromExpiryRisks(items)
+	if len(warnings) != 2 ||
+		!strings.Contains(warnings[0], "near expiry") ||
+		!strings.Contains(warnings[1], "inside the expiring window") {
+
+		t.Fatalf("unexpected near-expiry warnings: %#v", warnings)
+	}
+
+	items = []*pb.ExpiryRisk{
+		{Status: string(wallet.ExpiryStatusExpiring), BlocksToExpiry: 1},
+	}
+	warnings = warningsFromExpiryRisks(items)
+	if len(warnings) != 2 ||
+		!strings.Contains(warnings[0], "too close to expiry") {
+
+		t.Fatalf("unexpected too-late-next-block warnings: %#v", warnings)
+	}
+
+	items = []*pb.ExpiryRisk{
+		{Status: string(wallet.ExpiryStatusExpired), BlocksToExpiry: 0},
+		{Status: string(wallet.ExpiryStatusExpiring), BlocksToExpiry: 1},
+	}
+	warnings = warningsFromExpiryRisks(items)
+	if len(warnings) != 1 ||
+		!strings.Contains(warnings[0], "expired UTXOs") {
+
+		t.Fatalf("expired warning should dominate, got %#v", warnings)
 	}
 }
 

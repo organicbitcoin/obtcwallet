@@ -70,6 +70,7 @@ type AgentWalletOptions struct {
 type agentExpiryPolicy struct {
 	WindowBlocks             uint64
 	ExpiringThresholdBlocks  int32
+	RenewWarningBlocks       int32
 	DustThresholdSat         int64
 	ProjectedReclaimRatioBps uint32
 	Source                   string
@@ -84,6 +85,7 @@ func (compatibilityExpiryPolicyProvider) PolicyForWallet(
 	return agentExpiryPolicy{
 		WindowBlocks:             resolvedPolicy.WindowBlocks,
 		ExpiringThresholdBlocks:  resolvedPolicy.ExpiringThresholdBlocks,
+		RenewWarningBlocks:       resolvedPolicy.RenewWarningBlocks,
 		DustThresholdSat:         resolvedPolicy.DustThresholdSat,
 		ProjectedReclaimRatioBps: resolvedPolicy.ProjectedReclaimRatioBps,
 		Source:                   resolvedPolicy.Source,
@@ -1510,6 +1512,7 @@ func (s *agentWalletServer) resolveSubmitExpiryPolicy(
 		policy := agentExpiryPolicy{
 			WindowBlocks:             op.EffectivePolicy.WindowBlocks,
 			ExpiringThresholdBlocks:  op.EffectivePolicy.ExpiringThresholdBlocks,
+			RenewWarningBlocks:       wallet.DefaultRenewWarningBlocks,
 			DustThresholdSat:         op.EffectivePolicy.DustThresholdSat,
 			ProjectedReclaimRatioBps: op.EffectivePolicy.ProjectedReclaimRatioBps,
 			Source:                   op.EffectivePolicy.Source,
@@ -1899,9 +1902,9 @@ func buildExpiryRiskItems(outputs []*wallet.TransactionOutput, tipHeight int32,
 		projectedReclaimSat := projectedReclaimAmount(
 			amountSat, policy.ProjectedReclaimRatioBps,
 		)
-		info, err := wallet.BuildExpiryInfo(
+		info, err := wallet.BuildExpiryInfoWithRenewWarning(
 			createHeight, tipHeight, policy.WindowBlocks,
-			policy.ExpiringThresholdBlocks, amountSat,
+			policy.ExpiringThresholdBlocks, policy.RenewWarningBlocks, amountSat,
 			projectedReclaimSat, policy.DustThresholdSat,
 		)
 		if err != nil {
@@ -1943,6 +1946,8 @@ func validateExpiryPolicy(policy agentExpiryPolicy) error {
 		return fmt.Errorf("window_blocks must be > 0")
 	case policy.ExpiringThresholdBlocks < 0:
 		return fmt.Errorf("expiring_threshold_blocks must be >= 0")
+	case policy.RenewWarningBlocks < 0:
+		return fmt.Errorf("renew_warning_blocks must be >= 0")
 	case policy.DustThresholdSat < 0:
 		return fmt.Errorf("dust_threshold_sat must be >= 0")
 	case policy.ProjectedReclaimRatioBps == 0:
@@ -2064,6 +2069,8 @@ func policyVerdictFromExpiryRisks(items []*pb.ExpiryRisk) string {
 func warningsFromExpiryRisks(items []*pb.ExpiryRisk) []string {
 	warnings := make([]string, 0, 2)
 	hasExpiring := false
+	hasNearExpiry := false
+	hasTooLateNextBlock := false
 	for _, item := range items {
 		switch item.Status {
 		case string(wallet.ExpiryStatusExpired):
@@ -2072,6 +2079,22 @@ func warningsFromExpiryRisks(items []*pb.ExpiryRisk) []string {
 		case string(wallet.ExpiryStatusExpiring):
 			hasExpiring = true
 		}
+		if item.Status != string(wallet.ExpiryStatusExpired) &&
+			item.BlocksToExpiry <= wallet.DefaultRenewWarningBlocks {
+
+			hasNearExpiry = true
+			if item.BlocksToExpiry <= 1 {
+				hasTooLateNextBlock = true
+			}
+		}
+	}
+
+	if hasTooLateNextBlock {
+		warnings = append(warnings,
+			"selected outpoints are too close to expiry for the next block to renew them")
+	} else if hasNearExpiry {
+		warnings = append(warnings,
+			"selected outpoints are near expiry; renewal only succeeds if confirmed before expiry height")
 	}
 
 	if hasExpiring {

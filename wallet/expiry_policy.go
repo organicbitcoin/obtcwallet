@@ -16,6 +16,12 @@ const (
 	// wallet-side expiry planning.
 	DefaultProjectedReclaimRatioBps uint32 = 7000
 
+	// DefaultRenewWarningBlocks is the wallet-side safety margin used to warn
+	// users that a renewal transaction must confirm soon.  This is not a
+	// consensus parameter; any UTXO that has not reached expiry is still
+	// renewable if the renewal transaction confirms before expiry.
+	DefaultRenewWarningBlocks int32 = 12
+
 	maxDefaultExpiringThresholdBlocks int32 = 144 * 180
 )
 
@@ -24,6 +30,7 @@ const (
 type ResolvedExpiryPolicy struct {
 	WindowBlocks             uint64
 	ExpiringThresholdBlocks  int32
+	RenewWarningBlocks       int32
 	DustThresholdSat         int64
 	ProjectedReclaimRatioBps uint32
 	Source                   string
@@ -56,6 +63,7 @@ func ResolveExpiryPolicy(params *chaincfg.Params) (ResolvedExpiryPolicy, []strin
 	policy.ExpiringThresholdBlocks = defaultExpiringThresholdBlocks(
 		policy.WindowBlocks,
 	)
+	policy.RenewWarningBlocks = DefaultRenewWarningBlocks
 
 	return policy, warnings
 }

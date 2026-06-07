@@ -29,30 +29,32 @@ const (
 var walletDataDirectory = btcutil.AppDataDir("btcwallet", false)
 
 var opts = struct {
-	RPCConnect     string  `long:"connect" description:"Hostname[:port] of the experimental agent gRPC server" default:"localhost:8332"`
-	RPCUsername    string  `long:"rpcuser" description:"Deprecated: ignored by the agent gRPC path"`
-	RPCPassword    string  `long:"rpcpass" description:"Deprecated: ignored by the agent gRPC path"`
-	RPCCertificate string  `long:"cafile" description:"Wallet RPC TLS certificate"`
-	DisableTLS     bool    `long:"notls" description:"Disable TLS for the agent gRPC client -- NOTE: This is only allowed if connect points to localhost"`
-	WalletPass     string  `long:"walletpass" default-mask:"-" description:"Wallet private passphrase for local signer mode, or remote signer auth bytes for remote signer mode"`
-	Principal      string  `long:"principal" description:"Principal recorded in agent wallet audit fields" default:"cli:renewall"`
-	WalletID       string  `long:"walletid" description:"Wallet identifier used by AgentWalletService" default:"default"`
-	AccountNumber  uint32  `long:"account" description:"Wallet account number used for renewal planning" default:"0"`
-	CapabilityTTL  int64   `long:"capabilityttl" description:"Capability TTL in seconds for execution runs" default:"900"`
-	SessionTTL     int64   `long:"sessionttl" description:"Signer session TTL in seconds for execution runs" default:"300"`
-	Label          string  `long:"label" description:"Optional label used when publishing renewal transactions"`
-	Amount         float64 `long:"amount" description:"Renew amount in BTC per selected UTXO" required:"true"`
-	FetchLimit     int     `long:"fetchlimit" description:"Max rows fetched from GetExpiryRisk" default:"1000"`
-	BatchLimit     int     `long:"limit" description:"Max renew tx to send in one run (0 means all selected)" default:"10"`
-	IncludeExpired bool    `long:"include-expired" description:"Include expired items (default only expiring)"`
-	TargetAddress  string  `long:"target-address" description:"Optional target address for renew outputs"`
-	MaxFeeRate     float64 `long:"maxfeerate" description:"Optional max fee rate in BTC/KB (0 means wallet default)" default:"0"`
-	MinConf        int32   `long:"minconf" description:"Optional minimum confirmations" default:"0"`
-	DryRun         bool    `long:"dry-run" description:"Only print selected outpoints without signing or publishing"`
-	WindowStart    int32   `long:"window-start" description:"Optional upper bound of blocks_to_expiry (requires --window-end)" default:"-1"`
-	WindowEnd      int32   `long:"window-end" description:"Optional lower bound of blocks_to_expiry (requires --window-start)" default:"-1"`
-	Interval       string  `long:"interval" description:"Optional repeat interval, e.g. 30m (empty means run once)"`
-	Runs           int     `long:"runs" description:"Number of scheduled runs when --interval is set (0 means forever)" default:"1"`
+	RPCConnect        string  `long:"connect" description:"Hostname[:port] of the experimental agent gRPC server" default:"localhost:8332"`
+	RPCUsername       string  `long:"rpcuser" description:"Deprecated: ignored by the agent gRPC path"`
+	RPCPassword       string  `long:"rpcpass" description:"Deprecated: ignored by the agent gRPC path"`
+	RPCCertificate    string  `long:"cafile" description:"Wallet RPC TLS certificate"`
+	DisableTLS        bool    `long:"notls" description:"Disable TLS for the agent gRPC client -- NOTE: This is only allowed if connect points to localhost"`
+	WalletPass        string  `long:"walletpass" default-mask:"-" description:"Wallet private passphrase for local signer mode, or remote signer auth bytes for remote signer mode"`
+	Principal         string  `long:"principal" description:"Principal recorded in agent wallet audit fields" default:"cli:renewall"`
+	WalletID          string  `long:"walletid" description:"Wallet identifier used by AgentWalletService" default:"default"`
+	AccountNumber     uint32  `long:"account" description:"Wallet account number used for renewal planning" default:"0"`
+	CapabilityTTL     int64   `long:"capabilityttl" description:"Capability TTL in seconds for execution runs" default:"900"`
+	SessionTTL        int64   `long:"sessionttl" description:"Signer session TTL in seconds for execution runs" default:"300"`
+	Label             string  `long:"label" description:"Optional label used when publishing renewal transactions"`
+	Amount            float64 `long:"amount" description:"Renew amount in BTC per selected UTXO" required:"true"`
+	FetchLimit        int     `long:"fetchlimit" description:"Max rows fetched from GetExpiryRisk" default:"1000"`
+	BatchLimit        int     `long:"limit" description:"Max renew tx to send in one run (0 means all selected)" default:"10"`
+	IncludeExpired    bool    `long:"include-expired" description:"Include expired items (default only expiring)"`
+	IncludeNearExpiry bool    `long:"include-near-expiry" description:"Include near-expiry items that may not confirm before expiry"`
+	NearExpiryBlocks  int32   `long:"near-expiry-blocks" description:"Wallet-side warning threshold for blocks_to_expiry; skipped unless --include-near-expiry is set" default:"12"`
+	TargetAddress     string  `long:"target-address" description:"Optional target address for renew outputs"`
+	MaxFeeRate        float64 `long:"maxfeerate" description:"Optional max fee rate in BTC/KB (0 means wallet default)" default:"0"`
+	MinConf           int32   `long:"minconf" description:"Optional minimum confirmations" default:"0"`
+	DryRun            bool    `long:"dry-run" description:"Only print selected outpoints without signing or publishing"`
+	WindowStart       int32   `long:"window-start" description:"Optional upper bound of blocks_to_expiry (requires --window-end)" default:"-1"`
+	WindowEnd         int32   `long:"window-end" description:"Optional lower bound of blocks_to_expiry (requires --window-start)" default:"-1"`
+	Interval          string  `long:"interval" description:"Optional repeat interval, e.g. 30m (empty means run once)"`
+	Runs              int     `long:"runs" description:"Number of scheduled runs when --interval is set (0 means forever)" default:"1"`
 }{
 	Principal:      defaultPrincipal,
 	RPCCertificate: filepath.Join(walletDataDirectory, "rpc.cert"),
@@ -66,10 +68,12 @@ type getExpiryItem struct {
 }
 
 type renewFilter struct {
-	includeExpired bool
-	useWindow      bool
-	windowStart    int32
-	windowEnd      int32
+	includeExpired    bool
+	includeNearExpiry bool
+	nearExpiryBlocks  int32
+	useWindow         bool
+	windowStart       int32
+	windowEnd         int32
 }
 
 type loopConfig struct {
@@ -144,7 +148,13 @@ func shouldRenew(status string, includeExpired bool) bool {
 	return includeExpired && status == "expired"
 }
 
-func newRenewFilter(includeExpired bool, windowStart, windowEnd int32) (renewFilter, error) {
+func newRenewFilter(includeExpired, includeNearExpiry bool, windowStart,
+	windowEnd, nearExpiryBlocks int32) (renewFilter, error) {
+
+	if nearExpiryBlocks < 0 {
+		return renewFilter{}, fmt.Errorf("near-expiry-blocks must be >= 0")
+	}
+
 	hasStart := windowStart >= 0
 	hasEnd := windowEnd >= 0
 
@@ -153,7 +163,11 @@ func newRenewFilter(includeExpired bool, windowStart, windowEnd int32) (renewFil
 	}
 
 	if !hasStart {
-		return renewFilter{includeExpired: includeExpired}, nil
+		return renewFilter{
+			includeExpired:    includeExpired,
+			includeNearExpiry: includeNearExpiry,
+			nearExpiryBlocks:  nearExpiryBlocks,
+		}, nil
 	}
 
 	if windowStart < windowEnd {
@@ -161,14 +175,26 @@ func newRenewFilter(includeExpired bool, windowStart, windowEnd int32) (renewFil
 	}
 
 	return renewFilter{
-		includeExpired: includeExpired,
-		useWindow:      true,
-		windowStart:    windowStart,
-		windowEnd:      windowEnd,
+		includeExpired:    includeExpired,
+		includeNearExpiry: includeNearExpiry,
+		nearExpiryBlocks:  nearExpiryBlocks,
+		useWindow:         true,
+		windowStart:       windowStart,
+		windowEnd:         windowEnd,
 	}, nil
 }
 
+func (f renewFilter) skipsNearExpiry(it getExpiryItem) bool {
+	return !f.includeNearExpiry &&
+		it.Status != "expired" &&
+		it.BlocksToExpiry <= f.nearExpiryBlocks
+}
+
 func (f renewFilter) shouldRenewItem(it getExpiryItem) bool {
+	if f.skipsNearExpiry(it) {
+		return false
+	}
+
 	if f.useWindow {
 		if it.BlocksToExpiry > f.windowStart || it.BlocksToExpiry < f.windowEnd {
 			return false
@@ -594,7 +620,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	filter, err := newRenewFilter(opts.IncludeExpired, opts.WindowStart, opts.WindowEnd)
+	filter, err := newRenewFilter(opts.IncludeExpired, opts.IncludeNearExpiry,
+		opts.WindowStart, opts.WindowEnd, opts.NearExpiryBlocks)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid renew filter: %v\n", err)
 		os.Exit(1)

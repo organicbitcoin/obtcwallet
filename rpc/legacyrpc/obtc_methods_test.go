@@ -31,7 +31,8 @@ func TestMakeGetExpiryResultDirect(t *testing.T) {
 	}
 	before := int32(200)
 	items, err := makeGetExpiryResult(
-		outputs, 30, 100, 50, wallet.CompatibilityDustThresholdSat,
+		outputs, 30, 100, 50, wallet.DefaultRenewWarningBlocks,
+		wallet.CompatibilityDustThresholdSat,
 		10, &before,
 	)
 	if err != nil {
@@ -43,6 +44,9 @@ func TestMakeGetExpiryResultDirect(t *testing.T) {
 	if items[0].ExpiryHeight > items[1].ExpiryHeight {
 		t.Fatalf("expected sorted by expiry height")
 	}
+	if items[0].RenewalRisk == "" || items[0].LatestRenewHeight == 0 {
+		t.Fatalf("expected renewal risk fields, got %+v", items[0])
+	}
 }
 
 func TestMakeGetExpiryResultLimitAndFilter(t *testing.T) {
@@ -53,7 +57,8 @@ func TestMakeGetExpiryResultLimitAndFilter(t *testing.T) {
 	}
 	before := int32(125) // with window 100, keep heights 10 and 20 only
 	items, err := makeGetExpiryResult(
-		outputs, 0, 100, 10, wallet.CompatibilityDustThresholdSat,
+		outputs, 0, 100, 10, wallet.DefaultRenewWarningBlocks,
+		wallet.CompatibilityDustThresholdSat,
 		1, &before,
 	)
 	if err != nil {
@@ -61,6 +66,53 @@ func TestMakeGetExpiryResultLimitAndFilter(t *testing.T) {
 	}
 	if len(items) != 1 {
 		t.Fatalf("expected limit+filter to return 1 item, got %d", len(items))
+	}
+}
+
+func TestMakeGetExpiryResultNearExpiryFields(t *testing.T) {
+	outputs := []*wallet.TransactionOutput{
+		{
+			OutPoint: testOutPoint(1),
+			Output:   wire.TxOut{Value: 1000},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 100,
+			},
+		},
+		{
+			OutPoint: testOutPoint(2),
+			Output:   wire.TxOut{Value: 1000},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 99,
+			},
+		},
+	}
+
+	items, err := makeGetExpiryResult(
+		outputs, 188, 100, 25, 12, wallet.CompatibilityDustThresholdSat,
+		0, nil,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+
+	near := items[0]
+	if near.BlocksToExpiry != 11 || !near.NearExpiryWarning ||
+		near.RenewalRisk != string(wallet.RenewalRiskNearExpiry) ||
+		!near.RenewableInNextBlock ||
+		near.LatestRenewHeight != 198 ||
+		near.BlocksUntilLatestRenew != 10 {
+
+		t.Fatalf("unexpected near-expiry fields: %+v", near)
+	}
+
+	edge := items[1]
+	if edge.BlocksToExpiry != 12 || !edge.NearExpiryWarning ||
+		edge.RenewalRisk != string(wallet.RenewalRiskNearExpiry) {
+
+		t.Fatalf("unexpected warning-boundary fields: %+v", edge)
 	}
 }
 

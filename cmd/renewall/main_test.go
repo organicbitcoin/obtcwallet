@@ -161,6 +161,8 @@ func useTestOpts(t *testing.T) {
 	opts.FetchLimit = 1000
 	opts.BatchLimit = 10
 	opts.IncludeExpired = false
+	opts.IncludeNearExpiry = false
+	opts.NearExpiryBlocks = 12
 	opts.TargetAddress = ""
 	opts.MaxFeeRate = 0
 	opts.MinConf = 0
@@ -184,14 +186,17 @@ func TestShouldRenewDirect(t *testing.T) {
 }
 
 func TestNewRenewFilterDirect(t *testing.T) {
-	if _, err := newRenewFilter(false, 100, -1); err == nil {
+	if _, err := newRenewFilter(false, false, 100, -1, 12); err == nil {
 		t.Fatalf("expected error when only one window bound is set")
 	}
-	if _, err := newRenewFilter(false, 50, 100); err == nil {
+	if _, err := newRenewFilter(false, false, 50, 100, 12); err == nil {
 		t.Fatalf("expected error when window-start < window-end")
 	}
+	if _, err := newRenewFilter(false, false, -1, -1, -1); err == nil {
+		t.Fatalf("expected error when near-expiry-blocks is negative")
+	}
 
-	f, err := newRenewFilter(true, -1, -1)
+	f, err := newRenewFilter(true, false, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("unexpected error for disabled window filter: %v", err)
 	}
@@ -199,7 +204,7 @@ func TestNewRenewFilterDirect(t *testing.T) {
 		t.Fatalf("expected window filter disabled")
 	}
 
-	f, err = newRenewFilter(true, 100, 50)
+	f, err = newRenewFilter(true, false, 100, 50, 12)
 	if err != nil {
 		t.Fatalf("unexpected error for valid window filter: %v", err)
 	}
@@ -216,7 +221,7 @@ func TestSelectOutpointsDirect(t *testing.T) {
 		{OutPoint: "d:0", Status: "ok", BlocksToExpiry: 80},
 	}
 
-	statusFilter, err := newRenewFilter(true, -1, -1)
+	statusFilter, err := newRenewFilter(true, true, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("new status filter: %v", err)
 	}
@@ -225,7 +230,7 @@ func TestSelectOutpointsDirect(t *testing.T) {
 		t.Fatalf("unexpected status selection: %v", got)
 	}
 
-	windowFilter, err := newRenewFilter(false, 150, 50)
+	windowFilter, err := newRenewFilter(false, true, 150, 50, 12)
 	if err != nil {
 		t.Fatalf("new window filter: %v", err)
 	}
@@ -237,6 +242,38 @@ func TestSelectOutpointsDirect(t *testing.T) {
 	got = selectOutpoints(items, 1, windowFilter)
 	if len(got) != 1 || got[0] != "b:0" {
 		t.Fatalf("unexpected window selection with limit=1: %v", got)
+	}
+}
+
+func TestSelectOutpointsSkipsNearExpiryByDefault(t *testing.T) {
+	items := []getExpiryItem{
+		{OutPoint: "safe:0", Status: "expiring", BlocksToExpiry: 13},
+		{OutPoint: "boundary:0", Status: "expiring", BlocksToExpiry: 12},
+		{OutPoint: "next-block-too-late:0", Status: "expiring", BlocksToExpiry: 1},
+		{OutPoint: "expired:0", Status: "expired", BlocksToExpiry: 0},
+	}
+
+	filter, err := newRenewFilter(true, false, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+	got := selectOutpoints(items, 0, filter)
+	if !reflect.DeepEqual(got, []string{"safe:0", "expired:0"}) {
+		t.Fatalf("unexpected default near-expiry selection: %v", got)
+	}
+
+	filter, err = newRenewFilter(true, true, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+	got = selectOutpoints(items, 0, filter)
+	if !reflect.DeepEqual(got, []string{
+		"safe:0",
+		"boundary:0",
+		"next-block-too-late:0",
+		"expired:0",
+	}) {
+		t.Fatalf("unexpected include-near-expiry selection: %v", got)
 	}
 }
 
@@ -273,7 +310,7 @@ func TestRunRenewAllOnceDryRunUsesAgentRiskQuery(t *testing.T) {
 	opts.DryRun = true
 	opts.BatchLimit = 1
 
-	filter, err := newRenewFilter(false, -1, -1)
+	filter, err := newRenewFilter(false, false, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("new renew filter: %v", err)
 	}
@@ -292,7 +329,7 @@ func TestRunRenewAllOnceDryRunUsesAgentRiskQuery(t *testing.T) {
 		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
 			Meta: &pb.ResponseMeta{},
 			Items: []*pb.ExpiryRisk{
-				{Outpoint: "expiring:0", Status: "expiring", BlocksToExpiry: 12},
+				{Outpoint: "expiring:0", Status: "expiring", BlocksToExpiry: 13},
 				{Outpoint: "expired:0", Status: "expired", BlocksToExpiry: -2},
 			},
 		},
@@ -324,7 +361,7 @@ func TestRunRenewAllOnceRejectsUnsyncedWalletState(t *testing.T) {
 	useTestOpts(t)
 	opts.DryRun = true
 
-	filter, err := newRenewFilter(false, -1, -1)
+	filter, err := newRenewFilter(false, false, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("new renew filter: %v", err)
 	}
@@ -365,7 +402,7 @@ func TestRunRenewAllOnceExecutesViaAgentFlow(t *testing.T) {
 	opts.BatchLimit = 1
 	opts.Label = "renewall-agent"
 
-	filter, err := newRenewFilter(false, -1, -1)
+	filter, err := newRenewFilter(false, false, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("new renew filter: %v", err)
 	}
@@ -503,7 +540,7 @@ func TestRunRenewAllOnceExecutesViaAgentFlow(t *testing.T) {
 	}
 
 	if got := stdout.String(); !strings.Contains(got,
-		"[1/2] renewed abc:1 txid=tx-1 operation_id=op-1\n") {
+		"[1/1] renewed abc:1 txid=tx-1 operation_id=op-1\n") {
 
 		t.Fatalf("unexpected stdout: %q", got)
 	}
@@ -517,7 +554,7 @@ func TestRunRenewAllOnceScansPastPreviewFailure(t *testing.T) {
 	opts.WalletPass = "topsecret"
 	opts.BatchLimit = 1
 
-	filter, err := newRenewFilter(false, -1, -1)
+	filter, err := newRenewFilter(false, true, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("new renew filter: %v", err)
 	}
@@ -592,7 +629,7 @@ func TestRunRenewAllOnceScansPastPreviewFailure(t *testing.T) {
 func TestRunRenewAllOnceRejectsPublishOnlySignerBackend(t *testing.T) {
 	useTestOpts(t)
 
-	filter, err := newRenewFilter(false, -1, -1)
+	filter, err := newRenewFilter(false, false, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("new renew filter: %v", err)
 	}
@@ -630,7 +667,7 @@ func TestRunRenewAllOnceRejectsPublishOnlySignerBackend(t *testing.T) {
 func TestRunRenewAllOnceLocalSignerRequiresWalletPass(t *testing.T) {
 	useTestOpts(t)
 
-	filter, err := newRenewFilter(false, -1, -1)
+	filter, err := newRenewFilter(false, false, -1, -1, 12)
 	if err != nil {
 		t.Fatalf("new renew filter: %v", err)
 	}

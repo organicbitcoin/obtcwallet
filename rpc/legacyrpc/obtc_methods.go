@@ -28,20 +28,26 @@ type GetExpiryCmd struct {
 }
 
 type GetExpiryResultItem struct {
-	OutPoint       string `json:"outpoint"`
-	AmountSat      int64  `json:"amount_sat"`
-	CreateHeight   int32  `json:"create_height"`
-	ExpiryHeight   int32  `json:"expiry_height"`
-	BlocksToExpiry int32  `json:"blocks_to_expiry"`
-	DaysToExpiry   int32  `json:"days_to_expiry"`
-	Status         string `json:"status"`
-	DustRisk       bool   `json:"dust_risk"`
+	OutPoint               string `json:"outpoint"`
+	AmountSat              int64  `json:"amount_sat"`
+	CreateHeight           int32  `json:"create_height"`
+	ExpiryHeight           int32  `json:"expiry_height"`
+	BlocksToExpiry         int32  `json:"blocks_to_expiry"`
+	DaysToExpiry           int32  `json:"days_to_expiry"`
+	Status                 string `json:"status"`
+	DustRisk               bool   `json:"dust_risk"`
+	LatestRenewHeight      int32  `json:"latest_renew_height"`
+	BlocksUntilLatestRenew int32  `json:"blocks_until_latest_renew"`
+	RenewableInNextBlock   bool   `json:"renewable_in_next_block"`
+	NearExpiryWarning      bool   `json:"near_expiry_warning"`
+	RenewalRisk            string `json:"renewal_risk"`
 }
 
 type GetExpiryResult struct {
-	TipHeight    int32                 `json:"tip_height"`
-	WindowBlocks uint64                `json:"window_blocks"`
-	Items        []GetExpiryResultItem `json:"items"`
+	TipHeight          int32                 `json:"tip_height"`
+	WindowBlocks       uint64                `json:"window_blocks"`
+	RenewWarningBlocks int32                 `json:"renew_warning_blocks"`
+	Items              []GetExpiryResultItem `json:"items"`
 }
 
 type RenewCmd struct {
@@ -53,11 +59,12 @@ type RenewCmd struct {
 }
 
 type RenewResult struct {
-	TxID            string `json:"txid"`
-	InputCount      int    `json:"input_count"`
-	OutputCount     int    `json:"output_count"`
-	FeeRateSatPerKB int64  `json:"fee_rate_sat_per_kb"`
-	TargetAddress   string `json:"target_address"`
+	TxID            string   `json:"txid"`
+	InputCount      int      `json:"input_count"`
+	OutputCount     int      `json:"output_count"`
+	FeeRateSatPerKB int64    `json:"fee_rate_sat_per_kb"`
+	TargetAddress   string   `json:"target_address"`
+	Warnings        []string `json:"warnings,omitempty"`
 }
 
 func init() {
@@ -66,7 +73,7 @@ func init() {
 }
 
 func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, windowBlocks uint64,
-	expiringThreshold int32, dustThresholdSat int64, limit int,
+	expiringThreshold, renewWarningBlocks int32, dustThresholdSat int64, limit int,
 	beforeHeight *int32) ([]GetExpiryResultItem, error) {
 	items := make([]GetExpiryResultItem, 0, len(outputs))
 	for _, out := range outputs {
@@ -76,8 +83,10 @@ func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, w
 		}
 		amountSat := out.Output.Value
 		reclaimSat := (amountSat * 70) / 100
-		info, err := wallet.BuildExpiryInfo(createHeight, tipHeight, windowBlocks,
-			expiringThreshold, amountSat, reclaimSat, dustThresholdSat)
+		info, err := wallet.BuildExpiryInfoWithRenewWarning(
+			createHeight, tipHeight, windowBlocks, expiringThreshold,
+			renewWarningBlocks, amountSat, reclaimSat, dustThresholdSat,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -85,14 +94,19 @@ func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, w
 			continue
 		}
 		items = append(items, GetExpiryResultItem{
-			OutPoint:       out.OutPoint.String(),
-			AmountSat:      amountSat,
-			CreateHeight:   info.CreateHeight,
-			ExpiryHeight:   info.ExpiryHeight,
-			BlocksToExpiry: info.BlocksToExpiry,
-			DaysToExpiry:   info.DaysToExpiry,
-			Status:         string(info.Status),
-			DustRisk:       info.DustRisk,
+			OutPoint:               out.OutPoint.String(),
+			AmountSat:              amountSat,
+			CreateHeight:           info.CreateHeight,
+			ExpiryHeight:           info.ExpiryHeight,
+			BlocksToExpiry:         info.BlocksToExpiry,
+			DaysToExpiry:           info.DaysToExpiry,
+			Status:                 string(info.Status),
+			DustRisk:               info.DustRisk,
+			LatestRenewHeight:      info.LatestRenewHeight,
+			BlocksUntilLatestRenew: info.BlocksUntilLatestRenew,
+			RenewableInNextBlock:   info.RenewableInNextBlock,
+			NearExpiryWarning:      info.NearExpiryWarning,
+			RenewalRisk:            string(info.RenewalRisk),
 		})
 	}
 
@@ -146,12 +160,18 @@ func getExpiry(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	tip := w.Manager.SyncedTo().Height
 	items, err := makeGetExpiryResult(
 		outputs, tip, windowBlocks, expiringThreshold,
-		resolvedPolicy.DustThresholdSat, limit, cmd.BeforeHeight,
+		resolvedPolicy.RenewWarningBlocks, resolvedPolicy.DustThresholdSat,
+		limit, cmd.BeforeHeight,
 	)
 	if err != nil {
 		return nil, err
 	}
-	return GetExpiryResult{TipHeight: tip, WindowBlocks: windowBlocks, Items: items}, nil
+	return GetExpiryResult{
+		TipHeight:          tip,
+		WindowBlocks:       windowBlocks,
+		RenewWarningBlocks: resolvedPolicy.RenewWarningBlocks,
+		Items:              items,
+	}, nil
 }
 
 func parseOutPointString(s string) (wire.OutPoint, error) {
@@ -219,6 +239,79 @@ func parseRenewAmount(amount float64) (btcutil.Amount, error) {
 	return amt, nil
 }
 
+func selectedRenewalWarnings(w *wallet.Wallet, selected []wire.OutPoint,
+	minConf int32) []string {
+
+	if w == nil || len(selected) == 0 {
+		return nil
+	}
+
+	policy, warnings := wallet.ResolveExpiryPolicy(w.ChainParams())
+	outputs, err := w.UnspentOutputs(wallet.OutputSelectionPolicy{
+		Account:               waddrmgr.DefaultAccountNum,
+		RequiredConfirmations: minConf,
+		IncludeExpired:        true,
+	})
+	if err != nil {
+		return append(warnings,
+			"unable to inspect selected outpoint expiry risk: "+err.Error())
+	}
+
+	byOutpoint := make(map[wire.OutPoint]*wallet.TransactionOutput, len(outputs))
+	for _, output := range outputs {
+		byOutpoint[output.OutPoint] = output
+	}
+
+	tip := w.Manager.SyncedTo().Height
+	hasNearExpiry := false
+	hasTooLateNextBlock := false
+	hasExpired := false
+	for _, op := range selected {
+		output := byOutpoint[op]
+		if output == nil || output.ContainingBlock.Height < 0 {
+			continue
+		}
+
+		amountSat := output.Output.Value
+		reclaimSat := (amountSat * int64(policy.ProjectedReclaimRatioBps)) / 10000
+		info, err := wallet.BuildExpiryInfoWithRenewWarning(
+			output.ContainingBlock.Height, tip, policy.WindowBlocks,
+			policy.ExpiringThresholdBlocks, policy.RenewWarningBlocks,
+			amountSat, reclaimSat, policy.DustThresholdSat,
+		)
+		if err != nil {
+			warnings = append(warnings,
+				"unable to inspect selected outpoint expiry risk: "+err.Error())
+			continue
+		}
+
+		switch info.RenewalRisk {
+		case wallet.RenewalRiskExpired:
+			hasExpired = true
+		case wallet.RenewalRiskTooLateNextBlock:
+			hasTooLateNextBlock = true
+		case wallet.RenewalRiskNearExpiry:
+			hasNearExpiry = true
+		}
+	}
+
+	if hasExpired {
+		warnings = append(warnings,
+			"selected outpoints include expired UTXOs; renewal will fail unless the wallet view is stale")
+	}
+	if hasTooLateNextBlock {
+		warnings = append(warnings,
+			"selected outpoints are too close to expiry for the next block to renew them; renewal confirmation risk is extreme")
+	}
+	if hasNearExpiry {
+		warnings = append(warnings,
+			"selected outpoints are near expiry; renewal only succeeds if confirmed before expiry height")
+	}
+
+	sort.Strings(warnings)
+	return warnings
+}
+
 func getRenew(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	if w == nil {
 		return nil, fmt.Errorf("wallet is nil")
@@ -241,6 +334,7 @@ func getRenew(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	warnings := selectedRenewalWarnings(w, selected, minConf)
 
 	var targetAddr btcutil.Address
 	var targetAddrStr string
@@ -285,5 +379,6 @@ func getRenew(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		OutputCount:     len(tx.TxOut),
 		FeeRateSatPerKB: int64(feeRate),
 		TargetAddress:   targetAddrStr,
+		Warnings:        warnings,
 	}, nil
 }
