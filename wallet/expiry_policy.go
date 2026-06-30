@@ -50,6 +50,12 @@ func ResolveExpiryPolicy(params *chaincfg.Params) (ResolvedExpiryPolicy, []strin
 	if expiryParams != nil {
 		policy.WindowBlocks = expiryParams.WindowBlocks
 		policy.DustThresholdSat = expiryParams.ReapDustThresholdSat
+		if ratioBps, ok := projectedReclaimRatioFromTax(expiryParams); ok {
+			policy.ProjectedReclaimRatioBps = ratioBps
+		} else {
+			warnings = append(warnings,
+				"invalid REAP tax parameters; using compatibility reclaim ratio")
+		}
 		policy.Source = "obtcd_chaincfg"
 	} else {
 		policy.WindowBlocks = CompatibilityExpiryWindowBlocks
@@ -66,6 +72,27 @@ func ResolveExpiryPolicy(params *chaincfg.Params) (ResolvedExpiryPolicy, []strin
 	policy.RenewWarningBlocks = DefaultRenewWarningBlocks
 
 	return policy, warnings
+}
+
+func projectedReclaimRatioFromTax(expiryParams *chaincfg.ExpiryParams) (uint32, bool) {
+	if expiryParams == nil ||
+		expiryParams.ReapTaxDenominator <= 0 ||
+		expiryParams.ReapTaxNumerator < 0 ||
+		expiryParams.ReapTaxNumerator > expiryParams.ReapTaxDenominator {
+
+		return DefaultProjectedReclaimRatioBps, false
+	}
+
+	reclaimNumerator := expiryParams.ReapTaxDenominator - expiryParams.ReapTaxNumerator
+	return uint32((reclaimNumerator * 10000) / expiryParams.ReapTaxDenominator), true
+}
+
+func (p ResolvedExpiryPolicy) ProjectedReclaimSat(amountSat int64) int64 {
+	return ProjectedReclaimSat(amountSat, p.ProjectedReclaimRatioBps)
+}
+
+func ProjectedReclaimSat(amountSat int64, ratioBps uint32) int64 {
+	return (amountSat * int64(ratioBps)) / 10000
 }
 
 func defaultExpiringThresholdBlocks(windowBlocks uint64) int32 {

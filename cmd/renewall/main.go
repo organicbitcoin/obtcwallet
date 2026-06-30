@@ -20,6 +20,7 @@ import (
 
 const (
 	defaultCapabilityTTLSeconds = 900
+	defaultAgentRPCConnect      = "localhost:19556"
 	defaultPrincipal            = "cli:renewall"
 	defaultRPCTimeout           = 30 * time.Second
 	defaultSessionTTLSeconds    = 300
@@ -29,7 +30,7 @@ const (
 var walletDataDirectory = btcutil.AppDataDir("btcwallet", false)
 
 var opts = struct {
-	RPCConnect        string  `long:"connect" description:"Hostname[:port] of the experimental agent gRPC server" default:"localhost:8332"`
+	RPCConnect        string  `long:"connect" description:"Hostname[:port] of the experimental agent gRPC server" default:"localhost:19556"`
 	RPCUsername       string  `long:"rpcuser" description:"Deprecated: ignored by the agent gRPC path"`
 	RPCPassword       string  `long:"rpcpass" description:"Deprecated: ignored by the agent gRPC path"`
 	RPCCertificate    string  `long:"cafile" description:"Wallet RPC TLS certificate"`

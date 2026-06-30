@@ -106,6 +106,29 @@ func TestValidateAutoRenewRuntimeConfigDirect(t *testing.T) {
 	}
 }
 
+func TestAutoRenewBackoffDirect(t *testing.T) {
+	cfg := DefaultAutoRenewRuntimeConfig()
+	cfg.FailureBackoff = time.Minute
+	now := time.Unix(1000, 0)
+	w := &Wallet{}
+
+	w.updateAutoRenewBackoff(cfg, now, 1)
+	if got := w.autoRenewBackoffRemaining(now.Add(30 * time.Second)); got != 30*time.Second {
+		t.Fatalf("unexpected backoff remaining: %v", got)
+	}
+
+	w.updateAutoRenewBackoff(cfg, now.Add(time.Minute), 0)
+	if got := w.autoRenewBackoffRemaining(now.Add(time.Minute)); got != 0 {
+		t.Fatalf("expected backoff to clear after successful run, got %v", got)
+	}
+
+	cfg.FailureBackoff = 0
+	w.updateAutoRenewBackoff(cfg, now, 1)
+	if got := w.autoRenewBackoffRemaining(now); got != 0 {
+		t.Fatalf("expected zero backoff setting to stay clear, got %v", got)
+	}
+}
+
 func TestNormalizeAutoRenewRuntimeConfigDirect(t *testing.T) {
 	cfg := AutoRenewRuntimeConfig{
 		Policy: DefaultAutoRenewPolicy(),

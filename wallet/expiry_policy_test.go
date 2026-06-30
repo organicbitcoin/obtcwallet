@@ -41,6 +41,9 @@ func TestResolveExpiryPolicyOBTCMainNet(t *testing.T) {
 	if policy.ExpiringThresholdBlocks != 25920 {
 		t.Fatalf("unexpected threshold: %d", policy.ExpiringThresholdBlocks)
 	}
+	if policy.ProjectedReclaimRatioBps != 7000 {
+		t.Fatalf("unexpected reclaim ratio: %d", policy.ProjectedReclaimRatioBps)
+	}
 	if policy.Source != "obtcd_chaincfg" {
 		t.Fatalf("unexpected source: %s", policy.Source)
 	}
@@ -63,6 +66,9 @@ func TestResolveExpiryPolicyOBTCTestNet(t *testing.T) {
 	if policy.ExpiringThresholdBlocks != 36 {
 		t.Fatalf("unexpected threshold: %d", policy.ExpiringThresholdBlocks)
 	}
+	if policy.ProjectedReclaimRatioBps != 7000 {
+		t.Fatalf("unexpected reclaim ratio: %d", policy.ProjectedReclaimRatioBps)
+	}
 	if policy.Source != "obtcd_chaincfg" {
 		t.Fatalf("unexpected source: %s", policy.Source)
 	}
@@ -84,6 +90,9 @@ func TestResolveExpiryPolicyOBTCRegTest(t *testing.T) {
 	}
 	if policy.ExpiringThresholdBlocks != 36 {
 		t.Fatalf("unexpected threshold: %d", policy.ExpiringThresholdBlocks)
+	}
+	if policy.ProjectedReclaimRatioBps != 7000 {
+		t.Fatalf("unexpected reclaim ratio: %d", policy.ProjectedReclaimRatioBps)
 	}
 	if policy.Source != "obtcd_chaincfg" {
 		t.Fatalf("unexpected source: %s", policy.Source)
@@ -111,8 +120,25 @@ func TestResolveExpiryPolicyFallsBackForBitcoinMainNet(t *testing.T) {
 	if policy.Source != "compatibility_default" {
 		t.Fatalf("unexpected fallback source: %s", policy.Source)
 	}
+	if policy.ProjectedReclaimRatioBps != DefaultProjectedReclaimRatioBps {
+		t.Fatalf("unexpected fallback reclaim ratio: %d",
+			policy.ProjectedReclaimRatioBps)
+	}
 	if len(warnings) == 0 {
 		t.Fatalf("expected fallback warnings")
+	}
+}
+
+func TestProjectedReclaimSatDirect(t *testing.T) {
+	t.Parallel()
+
+	if got := ProjectedReclaimSat(1000, 7000); got != 700 {
+		t.Fatalf("unexpected reclaim amount: %d", got)
+	}
+
+	policy := ResolvedExpiryPolicy{ProjectedReclaimRatioBps: 2500}
+	if got := policy.ProjectedReclaimSat(1000); got != 250 {
+		t.Fatalf("unexpected policy reclaim amount: %d", got)
 	}
 }
 
