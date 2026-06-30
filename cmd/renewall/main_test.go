@@ -147,7 +147,7 @@ func useTestOpts(t *testing.T) {
 		opts = saved
 	})
 
-	opts.RPCConnect = "localhost:8332"
+	opts.RPCConnect = defaultAgentRPCConnect
 	opts.RPCCertificate = ""
 	opts.DisableTLS = true
 	opts.WalletPass = ""
@@ -171,6 +171,17 @@ func useTestOpts(t *testing.T) {
 	opts.WindowEnd = -1
 	opts.Interval = ""
 	opts.Runs = 1
+}
+
+func TestRPCConnectDefaultMatchesAgentPort(t *testing.T) {
+	field, ok := reflect.TypeOf(opts).FieldByName("RPCConnect")
+	if !ok {
+		t.Fatalf("RPCConnect option field missing")
+	}
+	if got := field.Tag.Get("default"); got != defaultAgentRPCConnect {
+		t.Fatalf("unexpected default connect tag: got %q want %q",
+			got, defaultAgentRPCConnect)
+	}
 }
 
 func TestShouldRenewDirect(t *testing.T) {

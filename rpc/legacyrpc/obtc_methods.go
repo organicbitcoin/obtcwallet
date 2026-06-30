@@ -73,8 +73,10 @@ func init() {
 }
 
 func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, windowBlocks uint64,
-	expiringThreshold, renewWarningBlocks int32, dustThresholdSat int64, limit int,
-	beforeHeight *int32) ([]GetExpiryResultItem, error) {
+	expiringThreshold, renewWarningBlocks int32, dustThresholdSat int64,
+	projectedReclaimRatioBps uint32, limit int, beforeHeight *int32) (
+	[]GetExpiryResultItem, error) {
+
 	items := make([]GetExpiryResultItem, 0, len(outputs))
 	for _, out := range outputs {
 		createHeight := out.ContainingBlock.Height
@@ -82,7 +84,9 @@ func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, w
 			continue
 		}
 		amountSat := out.Output.Value
-		reclaimSat := (amountSat * 70) / 100
+		reclaimSat := wallet.ProjectedReclaimSat(
+			amountSat, projectedReclaimRatioBps,
+		)
 		info, err := wallet.BuildExpiryInfoWithRenewWarning(
 			createHeight, tipHeight, windowBlocks, expiringThreshold,
 			renewWarningBlocks, amountSat, reclaimSat, dustThresholdSat,
@@ -161,7 +165,7 @@ func getExpiry(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	items, err := makeGetExpiryResult(
 		outputs, tip, windowBlocks, expiringThreshold,
 		resolvedPolicy.RenewWarningBlocks, resolvedPolicy.DustThresholdSat,
-		limit, cmd.BeforeHeight,
+		resolvedPolicy.ProjectedReclaimRatioBps, limit, cmd.BeforeHeight,
 	)
 	if err != nil {
 		return nil, err

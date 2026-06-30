@@ -406,7 +406,7 @@ func (w *Wallet) buildAutoRenewCandidates(cfg AutoRenewRuntimeConfig) ([]autoRen
 		}
 
 		amountSat := out.Output.Value
-		projectedReclaimSat := (amountSat * 70) / 100
+		projectedReclaimSat := resolvedPolicy.ProjectedReclaimSat(amountSat)
 		info, err := BuildExpiryInfo(
 			createHeight, tipHeight, cfg.ExpiryWindowBlocks,
 			cfg.ExpiringThresholdBlocks, amountSat,

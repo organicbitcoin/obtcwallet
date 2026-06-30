@@ -92,7 +92,7 @@ Tests: `rpc/legacyrpc/obtc_methods_test.go`
 | Wallet expiry core | Complete | Calculation, classification, and aggregation helpers are available. |
 | `obtc.getexpiry` | Complete | Wired through legacy RPC. |
 | `obtc.renew` | Complete v1 | Parameter validation and explicit-input renewal path are wired. |
-| Automatic renewal | Partial | Policy primitives exist; CLI scheduling exists; in-process wallet scheduling is not fully wired. |
+| Automatic renewal | Available, evidence-gated | Policy primitives, CLI scheduling, in-process scheduling, and failure backoff are wired; funded runtime evidence is still required before enabling by default. |
 | Batch CLI workflow | Available | `cmd/renewall` supports `dry-run`, `window-start`, `window-end`, `interval`, and `runs`. |
 | Validation docs | Complete | `phase5-validation` records requests, responses, failure cases, txid, and test commands. |
 
@@ -113,13 +113,13 @@ Notes:
 
 ## 7. Recommended Phase 5B Work
 
-1. Wire the in-process automatic renewal scheduler:
-   - bind `wallet/autorenew.go` policy to the execution path;
-   - define lifecycle and concurrency behavior.
+1. Validate the in-process automatic renewal scheduler with funded testnet runs:
+   - capture candidate selection, txids, failures, and backoff behavior;
+   - define the release default and operator rollback procedure.
 
-2. Add automatic renewal audit and risk controls:
+2. Strengthen automatic renewal audit and risk controls:
    - record candidates, successes, failures, and fee summaries per run;
-   - add maximum budget and failure backoff behavior.
+   - verify maximum budget and failure backoff behavior under RPC failures.
 
 3. Strengthen end-to-end validation:
    - cover scheduled execution, restart recovery, and reconnect races;

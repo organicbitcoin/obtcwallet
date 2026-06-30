@@ -33,6 +33,7 @@ func TestMakeGetExpiryResultDirect(t *testing.T) {
 	items, err := makeGetExpiryResult(
 		outputs, 30, 100, 50, wallet.DefaultRenewWarningBlocks,
 		wallet.CompatibilityDustThresholdSat,
+		wallet.DefaultProjectedReclaimRatioBps,
 		10, &before,
 	)
 	if err != nil {
@@ -59,6 +60,7 @@ func TestMakeGetExpiryResultLimitAndFilter(t *testing.T) {
 	items, err := makeGetExpiryResult(
 		outputs, 0, 100, 10, wallet.DefaultRenewWarningBlocks,
 		wallet.CompatibilityDustThresholdSat,
+		wallet.DefaultProjectedReclaimRatioBps,
 		1, &before,
 	)
 	if err != nil {
@@ -89,6 +91,7 @@ func TestMakeGetExpiryResultNearExpiryFields(t *testing.T) {
 
 	items, err := makeGetExpiryResult(
 		outputs, 188, 100, 25, 12, wallet.CompatibilityDustThresholdSat,
+		wallet.DefaultProjectedReclaimRatioBps,
 		0, nil,
 	)
 	if err != nil {

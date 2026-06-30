@@ -143,7 +143,7 @@ Example: windowed dry-run:
 
 ```bash
 renewall \
-  --rpcuser walletuser --rpcpass walletpass \
+  --connect=127.0.0.1:19556 --walletpass '<private-passphrase>' --notls \
   --amount 0.5 --fetchlimit 1000 --limit 20 \
   --window-start 52560 --window-end 25920 \
   --dry-run
@@ -153,7 +153,7 @@ Example: run every 30 minutes for 4 total runs:
 
 ```bash
 renewall \
-  --rpcuser walletuser --rpcpass walletpass \
+  --connect=127.0.0.1:19556 --walletpass '<private-passphrase>' --notls \
   --amount 0.5 --interval 30m --runs 4
 ```
 
