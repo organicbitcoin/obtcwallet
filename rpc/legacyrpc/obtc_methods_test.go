@@ -1,8 +1,10 @@
 package legacyrpc
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcwallet/wallet"
@@ -119,6 +121,83 @@ func TestMakeGetExpiryResultNearExpiryFields(t *testing.T) {
 	}
 }
 
+func TestMakeGetExpiryResultLifecycleFieldMatrix(t *testing.T) {
+	outputs := []*wallet.TransactionOutput{
+		{
+			OutPoint: testOutPoint(1),
+			Output:   wire.TxOut{Value: 10_000},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 120,
+			},
+		},
+		{
+			OutPoint: testOutPoint(2),
+			Output:   wire.TxOut{Value: 10_000},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 70,
+			},
+		},
+		{
+			OutPoint: testOutPoint(3),
+			Output:   wire.TxOut{Value: 500},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 40,
+			},
+		},
+	}
+
+	items, err := makeGetExpiryResult(
+		outputs, 150, 100, 20, 12,
+		wallet.CompatibilityDustThresholdSat,
+		wallet.DefaultProjectedReclaimRatioBps,
+		0, nil,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
+	}
+
+	byOutpoint := make(map[string]GetExpiryResultItem, len(items))
+	for _, item := range items {
+		if item.OutPoint == "" {
+			t.Fatalf("outpoint must be populated: %+v", item)
+		}
+		byOutpoint[item.OutPoint] = item
+	}
+
+	ok := byOutpoint[testOutPoint(1).String()]
+	if ok.AmountSat != 10_000 || ok.CreateHeight != 120 ||
+		ok.ExpiryHeight != 220 || ok.BlocksToExpiry != 70 ||
+		ok.DaysToExpiry != wallet.EstimateDaysToExpiry(70) ||
+		ok.Status != string(wallet.ExpiryStatusOK) ||
+		ok.DustRisk || ok.RenewalRisk != string(wallet.RenewalRiskOK) {
+
+		t.Fatalf("unexpected ok expiry item: %+v", ok)
+	}
+
+	expiring := byOutpoint[testOutPoint(2).String()]
+	if expiring.AmountSat != 10_000 || expiring.CreateHeight != 70 ||
+		expiring.ExpiryHeight != 170 || expiring.BlocksToExpiry != 20 ||
+		expiring.Status != string(wallet.ExpiryStatusExpiring) ||
+		expiring.DustRisk || expiring.RenewalRisk != string(wallet.RenewalRiskOK) {
+
+		t.Fatalf("unexpected expiring item: %+v", expiring)
+	}
+
+	expired := byOutpoint[testOutPoint(3).String()]
+	if expired.AmountSat != 500 || expired.CreateHeight != 40 ||
+		expired.ExpiryHeight != 140 || expired.BlocksToExpiry != 0 ||
+		expired.DaysToExpiry != 0 ||
+		expired.Status != string(wallet.ExpiryStatusExpired) ||
+		!expired.DustRisk ||
+		expired.RenewalRisk != string(wallet.RenewalRiskExpired) {
+
+		t.Fatalf("unexpected expired item: %+v", expired)
+	}
+}
+
 func TestGetExpiryDirectNilWallet(t *testing.T) {
 	_, err := getExpiry(&GetExpiryCmd{}, nil)
 	if err == nil {
@@ -194,6 +273,14 @@ func TestParseRenewFeeRateDirect(t *testing.T) {
 	bad := 0.0
 	if _, err := parseRenewFeeRate(&bad); err == nil {
 		t.Fatalf("expected non-positive fee rate error")
+	} else {
+		rpcErr, ok := err.(*btcjson.RPCError)
+		if !ok {
+			t.Fatalf("expected RPC error, got %T", err)
+		}
+		if rpcErr.Message != "maxfeerate must be > 0" {
+			t.Fatalf("unexpected fee error message: %q", rpcErr.Message)
+		}
 	}
 }
 
@@ -222,5 +309,38 @@ func TestGetRenewDirectParamValidation(t *testing.T) {
 	_, err = getRenew(&RenewCmd{OutPoints: []string{"00:0"}, Amount: 0}, &wallet.Wallet{})
 	if err == nil {
 		t.Fatalf("expected positive amount error")
+	}
+}
+
+func TestGetRenewDirectErrorsIncludeActionableReasons(t *testing.T) {
+	_, err := getRenew(&RenewCmd{OutPoints: nil, Amount: 1}, &wallet.Wallet{})
+	if err == nil || !strings.Contains(err.Error(), "outpoints must not be empty") {
+		t.Fatalf("expected outpoint reason, got %v", err)
+	}
+
+	_, err = getRenew(&RenewCmd{OutPoints: []string{"not-an-outpoint"}, Amount: 1},
+		&wallet.Wallet{})
+	if err == nil || !strings.Contains(err.Error(), "invalid outpoint format") {
+		t.Fatalf("expected invalid outpoint reason, got %v", err)
+	}
+
+	badFeeRate := -1.0
+	_, err = getRenew(&RenewCmd{
+		OutPoints:  []string{testOutPoint(9).String()},
+		Amount:     1,
+		MaxFeeRate: &badFeeRate,
+	}, &wallet.Wallet{})
+	if err == nil || !strings.Contains(err.Error(), "maxfeerate must be > 0") {
+		t.Fatalf("expected fee limit reason, got %v", err)
+	}
+
+	minConf := int32(-1)
+	_, err = getRenew(&RenewCmd{
+		OutPoints: []string{testOutPoint(9).String()},
+		Amount:    1,
+		MinConf:   &minConf,
+	}, &wallet.Wallet{})
+	if err == nil || !strings.Contains(err.Error(), "minconf") {
+		t.Fatalf("expected minconf reason, got %v", err)
 	}
 }

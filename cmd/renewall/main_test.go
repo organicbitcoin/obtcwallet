@@ -256,6 +256,46 @@ func TestSelectOutpointsDirect(t *testing.T) {
 	}
 }
 
+func TestSelectOutpointsLifecycleFiltersDirect(t *testing.T) {
+	items := []getExpiryItem{
+		{OutPoint: "ok-outside:0", Status: "ok", BlocksToExpiry: 300},
+		{OutPoint: "ok-window:0", Status: "ok", BlocksToExpiry: 90},
+		{OutPoint: "expiring-safe:0", Status: "expiring", BlocksToExpiry: 20},
+		{OutPoint: "expiring-near:0", Status: "expiring", BlocksToExpiry: 10},
+		{OutPoint: "expired:0", Status: "expired", BlocksToExpiry: 0},
+	}
+
+	statusFilter, err := newRenewFilter(false, false, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new status filter: %v", err)
+	}
+	if got := selectOutpoints(items, 0, statusFilter); !reflect.DeepEqual(
+		got, []string{"expiring-safe:0"}) {
+
+		t.Fatalf("unexpected status-only selection: %v", got)
+	}
+
+	statusWithExpired, err := newRenewFilter(true, true, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new status+expired filter: %v", err)
+	}
+	if got := selectOutpoints(items, 0, statusWithExpired); !reflect.DeepEqual(
+		got, []string{"expiring-safe:0", "expiring-near:0", "expired:0"}) {
+
+		t.Fatalf("unexpected include-expired selection: %v", got)
+	}
+
+	windowFilter, err := newRenewFilter(false, true, 100, 50, 12)
+	if err != nil {
+		t.Fatalf("new window filter: %v", err)
+	}
+	if got := selectOutpoints(items, 2, windowFilter); !reflect.DeepEqual(
+		got, []string{"ok-window:0"}) {
+
+		t.Fatalf("unexpected window-limited selection: %v", got)
+	}
+}
+
 func TestSelectOutpointsSkipsNearExpiryByDefault(t *testing.T) {
 	items := []getExpiryItem{
 		{OutPoint: "safe:0", Status: "expiring", BlocksToExpiry: 13},
@@ -365,6 +405,51 @@ func TestRunRenewAllOnceDryRunUsesAgentRiskQuery(t *testing.T) {
 	}
 	if len(client.previewRenewalReqs) != 0 || len(client.submitRenewalReqs) != 0 {
 		t.Fatalf("dry-run should not preview or submit renewals")
+	}
+}
+
+func TestRunRenewAllOnceDryRunNoCandidatesIsClearNoop(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = true
+
+	filter, err := newRenewFilter(false, false, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "ok:0", Status: "ok", BlocksToExpiry: 500},
+				{Outpoint: "near:0", Status: "expiring", BlocksToExpiry: 1},
+			},
+		},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := runRenewAllOnce(client, filter, &stdout, &stderr); err != nil {
+		t.Fatalf("runRenewAllOnce: %v", err)
+	}
+	if got := stdout.String(); got != "no renew candidates selected\n" {
+		t.Fatalf("unexpected stdout: %q", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+	if len(client.previewRenewalReqs) != 0 || len(client.submitRenewalReqs) != 0 {
+		t.Fatalf("no-candidate dry-run must not preview or submit")
 	}
 }
 
@@ -557,6 +642,118 @@ func TestRunRenewAllOnceExecutesViaAgentFlow(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestRunRenewAllOncePassesFeeMinconfTargetAndReportsFailures(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = false
+	opts.WalletPass = "topsecret"
+	opts.BatchLimit = 2
+	opts.Amount = 0.02
+	opts.MaxFeeRate = 0.00005
+	opts.MinConf = 6
+	opts.TargetAddress = "tb1qrenewtarget"
+
+	filter, err := newRenewFilter(false, true, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "fail-preview:0", Status: "expiring", BlocksToExpiry: 20},
+				{Outpoint: "fail-submit:0", Status: "expiring", BlocksToExpiry: 30},
+			},
+		},
+		issueCapabilityResp: &pb.IssueCapabilityResponse{
+			Meta:       &pb.ResponseMeta{},
+			Capability: &pb.Capability{CapabilityId: "cap-1"},
+		},
+		openSignerSessionResp: &pb.OpenSignerSessionResponse{
+			Meta:    &pb.ResponseMeta{},
+			Session: &pb.SignerSession{SignerSessionId: "sess-1"},
+		},
+		previewRenewalResps: []*pb.PreviewRenewalResponse{
+			nil,
+			{
+				Meta:      &pb.ResponseMeta{},
+				Operation: &pb.Operation{OperationId: "op-submit"},
+			},
+		},
+		previewRenewalErrs: []error{
+			errors.New("outpoint no longer spendable"),
+			nil,
+		},
+		submitRenewalErr:     errors.New("fee limit exceeded"),
+		closeSessionResp:     &pb.CloseSignerSessionResponse{Meta: &pb.ResponseMeta{}},
+		revokeCapabilityResp: &pb.RevokeCapabilityResponse{Meta: &pb.ResponseMeta{}},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := runRenewAllOnce(client, filter, &stdout, &stderr); err != nil {
+		t.Fatalf("runRenewAllOnce: %v", err)
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+	errOut := stderr.String()
+	for _, want := range []string{
+		"preview failed for fail-preview:0",
+		"outpoint no longer spendable",
+		"renew failed for fail-submit:0",
+		"fee limit exceeded",
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("stderr missing %q: %q", want, errOut)
+		}
+	}
+
+	if len(client.previewRenewalReqs) != 2 {
+		t.Fatalf("expected two preview attempts, got %d",
+			len(client.previewRenewalReqs))
+	}
+	secondPreview := client.previewRenewalReqs[1]
+	if got := secondPreview.GetOutpoints(); !reflect.DeepEqual(got,
+		[]string{"fail-submit:0"}) {
+
+		t.Fatalf("unexpected second preview outpoint: %v", got)
+	}
+	if got := secondPreview.GetTargetAmountSat(); got != 2_000_000 {
+		t.Fatalf("unexpected target amount: %d", got)
+	}
+	if got := secondPreview.GetMaxFeeRateSatPerKb(); got != 5_000 {
+		t.Fatalf("unexpected max fee rate: %d", got)
+	}
+	if got := secondPreview.GetMinConfirmations(); got != 6 {
+		t.Fatalf("unexpected min confirmations: %d", got)
+	}
+	if got := secondPreview.GetTargetAddress(); got != "tb1qrenewtarget" {
+		t.Fatalf("unexpected target address: %q", got)
+	}
+	if got := secondPreview.GetDryRun(); got {
+		t.Fatalf("execution preview request should set dry_run=false")
+	}
+	if len(client.submitRenewalReqs) != 1 {
+		t.Fatalf("expected one submit attempt, got %d",
+			len(client.submitRenewalReqs))
+	}
+	if len(client.closeSessionReqs) != 1 || len(client.revokeCapabilityReqs) != 1 {
+		t.Fatalf("expected cleanup after partial failures")
 	}
 }
 
