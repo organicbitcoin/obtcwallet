@@ -131,6 +131,95 @@ func TestBuildExpiryRiskItemsSortsAndFilters(t *testing.T) {
 	}
 }
 
+func TestBuildExpiryRiskItemsLifecycleFields(t *testing.T) {
+	outputs := []*wallet.TransactionOutput{
+		{
+			OutPoint: wire.OutPoint{
+				Hash:  chainhash.Hash{0x01},
+				Index: 0,
+			},
+			Output: wire.TxOut{Value: 10_000},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 120,
+			},
+		},
+		{
+			OutPoint: wire.OutPoint{
+				Hash:  chainhash.Hash{0x02},
+				Index: 0,
+			},
+			Output: wire.TxOut{Value: 10_000},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 70,
+			},
+		},
+		{
+			OutPoint: wire.OutPoint{
+				Hash:  chainhash.Hash{0x03},
+				Index: 0,
+			},
+			Output: wire.TxOut{Value: 500},
+			ContainingBlock: wallet.BlockIdentity{
+				Height: 40,
+			},
+		},
+	}
+	policy := agentExpiryPolicy{
+		WindowBlocks:             100,
+		ExpiringThresholdBlocks:  20,
+		RenewWarningBlocks:       12,
+		DustThresholdSat:         wallet.CompatibilityDustThresholdSat,
+		ProjectedReclaimRatioBps: wallet.DefaultProjectedReclaimRatioBps,
+		Source:                   "test",
+	}
+
+	items, err := buildExpiryRiskItems(outputs, 150, policy, 0, nil)
+	if err != nil {
+		t.Fatalf("buildExpiryRiskItems error: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
+	}
+
+	byOutpoint := make(map[string]*pb.ExpiryRisk, len(items))
+	for _, item := range items {
+		byOutpoint[item.GetOutpoint()] = item
+	}
+
+	ok := byOutpoint[outputs[0].OutPoint.String()]
+	if ok.GetAmountSat() != 10_000 || ok.GetCreateHeight() != 120 ||
+		ok.GetExpiryHeight() != 220 || ok.GetBlocksToExpiry() != 70 ||
+		ok.GetDaysToExpiry() != wallet.EstimateDaysToExpiry(70) ||
+		ok.GetStatus() != string(wallet.ExpiryStatusOK) ||
+		ok.GetDustRisk() {
+
+		t.Fatalf("unexpected ok expiry risk: %+v", ok)
+	}
+
+	expiring := byOutpoint[outputs[1].OutPoint.String()]
+	if expiring.GetAmountSat() != 10_000 ||
+		expiring.GetCreateHeight() != 70 ||
+		expiring.GetExpiryHeight() != 170 ||
+		expiring.GetBlocksToExpiry() != 20 ||
+		expiring.GetStatus() != string(wallet.ExpiryStatusExpiring) ||
+		expiring.GetDustRisk() {
+
+		t.Fatalf("unexpected expiring risk: %+v", expiring)
+	}
+
+	expired := byOutpoint[outputs[2].OutPoint.String()]
+	if expired.GetAmountSat() != 500 ||
+		expired.GetCreateHeight() != 40 ||
+		expired.GetExpiryHeight() != 140 ||
+		expired.GetBlocksToExpiry() != 0 ||
+		expired.GetDaysToExpiry() != 0 ||
+		expired.GetStatus() != string(wallet.ExpiryStatusExpired) ||
+		!expired.GetDustRisk() {
+
+		t.Fatalf("unexpected expired risk: %+v", expired)
+	}
+}
+
 func TestSummarizePsbt(t *testing.T) {
 	targetPkScript := []byte{0x51}
 	changePkScript := []byte{0x52}
@@ -249,6 +338,60 @@ func TestWarningsFromExpiryRisksNearExpiryBoundaries(t *testing.T) {
 		!strings.Contains(warnings[0], "expired UTXOs") {
 
 		t.Fatalf("expired warning should dominate, got %#v", warnings)
+	}
+}
+
+func TestBuildPreviewDecisionReasonsAreAuditable(t *testing.T) {
+	reasons := buildPreviewDecisionReasons(opSummaryDecisionContext{
+		outpointCount:      2,
+		policySource:       "request_override",
+		reservationID:      "res_1",
+		targetAmountSat:    1_000_000,
+		feeRateSatPerKB:    5_000,
+		minConfirmations:   6,
+		targetAddress:      "tb1qtarget",
+		walletDryRunNotice: true,
+	})
+	joined := strings.Join(reasons, "\n")
+	for _, want := range []string{
+		"selected_outpoints=2",
+		"policy_source=request_override",
+		"target_amount_sat=1000000",
+		"fee_rate_sat_per_kb=5000",
+		"min_confirmations=6",
+		"target_address=tb1qtarget",
+		"reservation_id=res_1",
+		"preview_only=true",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("decision reasons missing %q: %#v", want, reasons)
+		}
+	}
+	for _, forbidden := range []string{"passphrase", "private", "secret"} {
+		if strings.Contains(strings.ToLower(joined), forbidden) {
+			t.Fatalf("decision reasons leak sensitive term %q: %#v",
+				forbidden, reasons)
+		}
+	}
+}
+
+func TestParseOutPointStringsUniqueErrorsAreActionable(t *testing.T) {
+	_, err := parseOutPointStringsUnique(nil)
+	if err == nil || !strings.Contains(err.Error(), "outpoints must not be empty") {
+		t.Fatalf("unexpected empty outpoints error: %v", err)
+	}
+
+	_, err = parseOutPointStringsUnique([]string{"not-an-outpoint"})
+	if err == nil || !strings.Contains(err.Error(), "invalid outpoint format") {
+		t.Fatalf("unexpected invalid outpoint error: %v", err)
+	}
+
+	outpoint := chainhash.Hash{0x01}.String() + ":0"
+	_, err = parseOutPointStringsUnique([]string{outpoint, outpoint})
+	if err == nil || !strings.Contains(err.Error(), "duplicate outpoint") ||
+		!strings.Contains(err.Error(), outpoint) {
+
+		t.Fatalf("unexpected duplicate outpoint error: %v", err)
 	}
 }
 
