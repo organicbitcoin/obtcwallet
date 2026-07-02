@@ -43,6 +43,11 @@ Supported claims for mainnet-candidate documentation:
 - `--obtcmainnet` selects OBTC chain parameters, OBTC network directories, and
   the default `obtcd` RPC endpoint `127.0.0.1:9528`.
 - The OBTC mainnet legacy wallet JSON-RPC default port is `9554`.
+- New OBTC wallets use OBTC HD coin types for default BIP44/BIP49/BIP84/BIP86
+  scopes: `20260` for mainnet, `20261` for testnet, and `20262` for regtest.
+- Imported Bitcoin SLIP-0132 `ypub`/`zpub`/`upub`/`vpub` account public keys are
+  accepted on OBTC networks only as documented compatibility aliases with a
+  wallet warning; they are stored under the active OBTC coin-type scope.
 - `obtc.getexpiry` is available for wallet-side expiry inspection.
 - `obtc.renew` and the local signer path exist for controlled renewal testing.
 - `renewall --dry-run` is available for batch-renewal selection and preview

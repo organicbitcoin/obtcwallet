@@ -61,6 +61,38 @@ func deriveAcctPubKey(t *testing.T, root *hdkeychain.ExtendedKey,
 	return currentKey
 }
 
+func deriveVersionedAcctPubKey(t *testing.T, params *chaincfg.Params,
+	scope waddrmgr.KeyScope, version waddrmgr.HDVersion) *hdkeychain.ExtendedKey {
+
+	root, err := hdkeychain.NewMaster(
+		[]byte("obtcwallet-import-test-seed-0001"), params,
+	)
+	require.NoError(t, err)
+
+	scope = waddrmgr.KeyScopeForChainParams(scope, params)
+	path := []uint32{
+		hardenedKey(scope.Purpose),
+		hardenedKey(scope.Coin),
+		hardenedKey(0),
+	}
+
+	currentKey := root
+	for _, pathPart := range path {
+		currentKey, err = currentKey.Derive(pathPart)
+		require.NoError(t, err)
+	}
+
+	currentKey, err = currentKey.Neuter()
+	require.NoError(t, err)
+
+	var versionBytes [4]byte
+	binary.BigEndian.PutUint32(versionBytes[:], uint32(version))
+	currentKey, err = currentKey.CloneWithVersion(versionBytes[:])
+	require.NoError(t, err)
+
+	return currentKey
+}
+
 type testCase struct {
 	name               string
 	masterPriv         string
@@ -150,6 +182,97 @@ func TestImportAccount(t *testing.T) {
 			defer cleanup()
 
 			testImportAccount(t, w, tc, true, name)
+		})
+	}
+}
+
+func TestImportAccountAllowsBitcoinSLIP132OnOBTCNetworks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		params    *chaincfg.Params
+		version   waddrmgr.HDVersion
+		prefix    string
+		addrType  waddrmgr.AddressType
+		baseScope waddrmgr.KeyScope
+	}{
+		{
+			name:      "obtc mainnet ypub",
+			params:    &chaincfg.ObtcMainNetParams,
+			version:   waddrmgr.HDVersionMainNetBIP0049,
+			prefix:    "ypub",
+			addrType:  waddrmgr.NestedWitnessPubKey,
+			baseScope: waddrmgr.KeyScopeBIP0049Plus,
+		},
+		{
+			name:      "obtc mainnet zpub",
+			params:    &chaincfg.ObtcMainNetParams,
+			version:   waddrmgr.HDVersionMainNetBIP0084,
+			prefix:    "zpub",
+			addrType:  waddrmgr.WitnessPubKey,
+			baseScope: waddrmgr.KeyScopeBIP0084,
+		},
+		{
+			name:      "obtc testnet upub",
+			params:    &chaincfg.ObtcTestNetParams,
+			version:   waddrmgr.HDVersionTestNetBIP0049,
+			prefix:    "upub",
+			addrType:  waddrmgr.NestedWitnessPubKey,
+			baseScope: waddrmgr.KeyScopeBIP0049Plus,
+		},
+		{
+			name:      "obtc testnet vpub",
+			params:    &chaincfg.ObtcTestNetParams,
+			version:   waddrmgr.HDVersionTestNetBIP0084,
+			prefix:    "vpub",
+			addrType:  waddrmgr.WitnessPubKey,
+			baseScope: waddrmgr.KeyScopeBIP0084,
+		},
+		{
+			name:      "obtc regtest upub",
+			params:    &chaincfg.ObtcRegTestParams,
+			version:   waddrmgr.HDVersionTestNetBIP0049,
+			prefix:    "upub",
+			addrType:  waddrmgr.NestedWitnessPubKey,
+			baseScope: waddrmgr.KeyScopeBIP0049Plus,
+		},
+		{
+			name:      "obtc regtest vpub",
+			params:    &chaincfg.ObtcRegTestParams,
+			version:   waddrmgr.HDVersionTestNetBIP0084,
+			prefix:    "vpub",
+			addrType:  waddrmgr.WitnessPubKey,
+			baseScope: waddrmgr.KeyScopeBIP0084,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			w, cleanup := testWalletWithChainParams(t, tc.params)
+			defer cleanup()
+
+			acctPub := deriveVersionedAcctPubKey(
+				t, tc.params, tc.baseScope, tc.version,
+			)
+			require.True(t, strings.HasPrefix(acctPub.String(), tc.prefix))
+
+			props, err := w.ImportAccount(
+				tc.name, acctPub, 0, &tc.addrType,
+			)
+			require.NoError(t, err)
+			require.Equal(
+				t,
+				waddrmgr.KeyScopeForChainParams(tc.baseScope, tc.params),
+				props.KeyScope,
+			)
+			require.Equal(t, acctPub.String(), props.AccountPubKey.String())
+
+			_, err = w.NewAddress(props.AccountNumber, tc.baseScope)
+			require.NoError(t, err)
 		})
 	}
 }

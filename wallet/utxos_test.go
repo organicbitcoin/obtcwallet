@@ -98,7 +98,7 @@ func TestFetchInputInfo(t *testing.T) {
 func TestSpendableViewsSkipExpiredOBTCUtxos(t *testing.T) {
 	t.Parallel()
 
-	w, cleanup := testWallet(t)
+	w, cleanup := testWalletWithChainParams(t, &chaincfg.ObtcRegTestParams)
 	defer cleanup()
 
 	const tipHeight = int32(241)
@@ -109,8 +109,6 @@ func TestSpendableViewsSkipExpiredOBTCUtxos(t *testing.T) {
 
 	pkScript, err := txscript.PayToAddrScript(addr)
 	require.NoError(t, err)
-
-	w.chainParams = &chaincfg.ObtcRegTestParams
 
 	expiredTx := &wire.MsgTx{
 		TxIn:  []*wire.TxIn{{}},

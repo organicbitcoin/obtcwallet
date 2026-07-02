@@ -47,6 +47,30 @@ Current milestone:
   - `walletapp` for balance, receive, send, expiry inspection, and manual
     renewal through the existing legacy wallet RPC.
 
+## Wallet Namespace Policy
+
+New wallets created with OBTC network flags use OBTC HD coin types for the
+default wallet scopes:
+
+| Network | HD coin type |
+|---|---:|
+| OBTC mainnet | `20260` |
+| OBTC testnet | `20261` |
+| OBTC regtest | `20262` |
+
+The policy applies to the default BIP44, BIP49, BIP84, and BIP86 wallet scopes.
+Native OBTC account public key exports use the active OBTC chain's extended
+public key version bytes.
+
+Imported Bitcoin SLIP-0132 account public keys are accepted only as compatibility
+aliases on OBTC networks: mainnet accepts `ypub` and `zpub`, while testnet and
+regtest accept `upub` and `vpub`. The wallet logs a warning for these imports
+and stores the account under the OBTC coin-type scope for the active network.
+Prefer native OBTC account public key versions for new integrations. Older
+developer wallets created before this policy may contain legacy coin-type `0`
+scopes and should be recreated or explicitly re-imported for namespace-isolated
+OBTC operation.
+
 ## Known limits
 
 - This is not production financial infrastructure.

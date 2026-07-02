@@ -1,16 +1,27 @@
 package rpcserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/btcsuite/btcd/btcjson"
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/btcutil/psbt"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcwallet/chain"
 	pb "github.com/btcsuite/btcwallet/rpc/agentwalletrpc"
+	"github.com/btcsuite/btcwallet/waddrmgr"
 	"github.com/btcsuite/btcwallet/wallet"
+	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/btcsuite/btcwallet/wtxmgr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -69,6 +80,221 @@ func (b *testSignerBackend) ValidateSession(sessionID string) error {
 func (b *testSignerBackend) FinalizePsbt(sessionID string, _ uint32,
 	_ *psbt.Packet) error {
 	return b.ValidateSession(sessionID)
+}
+
+type unprotectedFinalizingSignerBackend struct {
+	testSignerBackend
+
+	wallet *wallet.Wallet
+}
+
+func (b *unprotectedFinalizingSignerBackend) FinalizePsbt(sessionID string,
+	_ uint32, packet *psbt.Packet) error {
+
+	if err := b.ValidateSession(sessionID); err != nil {
+		return err
+	}
+
+	tx := packet.UnsignedTx
+	prevFetcher := wallet.PsbtPrevOutputFetcher(packet)
+	sigHashes := txscript.NewTxSigHashes(tx, prevFetcher)
+	for idx, txIn := range tx.TxIn {
+		prevOut := prevFetcher.FetchPrevOutput(txIn.PreviousOutPoint)
+		if prevOut == nil {
+			return status.Errorf(codes.InvalidArgument,
+				"input %d missing previous output", idx)
+		}
+
+		_, addrs, _, err := txscript.ExtractPkScriptAddrs(
+			prevOut.PkScript, b.wallet.ChainParams(),
+		)
+		if err != nil || len(addrs) == 0 {
+			return status.Errorf(codes.InvalidArgument,
+				"input %d has unsupported previous output", idx)
+		}
+		privKey, err := b.wallet.PrivKeyForAddress(addrs[0])
+		if err != nil {
+			return err
+		}
+
+		witness, err := txscript.WitnessSignature(
+			tx, sigHashes, idx, prevOut.Value, prevOut.PkScript,
+			txscript.SigHashAll, privKey, true,
+		)
+		if err != nil {
+			return err
+		}
+
+		var witnessBytes bytes.Buffer
+		if err := psbt.WriteTxWitness(&witnessBytes, witness); err != nil {
+			return err
+		}
+		packet.Inputs[idx].FinalScriptWitness = witnessBytes.Bytes()
+	}
+
+	return psbt.MaybeFinalizeAll(packet)
+}
+
+type testRPCChainClient struct {
+	blockStamp *waddrmgr.BlockStamp
+}
+
+var _ chain.Interface = (*testRPCChainClient)(nil)
+
+func (c *testRPCChainClient) Start(context.Context) error { return nil }
+func (c *testRPCChainClient) Stop()                       {}
+func (c *testRPCChainClient) WaitForShutdown()            {}
+func (c *testRPCChainClient) GetBestBlock() (*chainhash.Hash, int32, error) {
+	if c.blockStamp != nil {
+		return &c.blockStamp.Hash, c.blockStamp.Height, nil
+	}
+	return &chainhash.Hash{}, 0, nil
+}
+func (c *testRPCChainClient) GetBlock(*chainhash.Hash) (*wire.MsgBlock, error) {
+	return nil, nil
+}
+func (c *testRPCChainClient) GetBlockHash(int64) (*chainhash.Hash, error) {
+	return &chainhash.Hash{}, nil
+}
+func (c *testRPCChainClient) GetBlockHeader(*chainhash.Hash) (
+	*wire.BlockHeader, error) {
+
+	return &wire.BlockHeader{Timestamp: time.Unix(1234, 0)}, nil
+}
+func (c *testRPCChainClient) IsCurrent() bool { return true }
+func (c *testRPCChainClient) FilterBlocks(*chain.FilterBlocksRequest) (
+	*chain.FilterBlocksResponse, error) {
+
+	return nil, nil
+}
+func (c *testRPCChainClient) BlockStamp() (*waddrmgr.BlockStamp, error) {
+	if c.blockStamp != nil {
+		stamp := *c.blockStamp
+		return &stamp, nil
+	}
+	return &waddrmgr.BlockStamp{}, nil
+}
+func (c *testRPCChainClient) SendRawTransaction(*wire.MsgTx, bool) (
+	*chainhash.Hash, error) {
+
+	return &chainhash.Hash{}, nil
+}
+func (c *testRPCChainClient) Rescan(*chainhash.Hash, []btcutil.Address,
+	map[wire.OutPoint]btcutil.Address) error {
+
+	return nil
+}
+func (c *testRPCChainClient) NotifyReceived([]btcutil.Address) error {
+	return nil
+}
+func (c *testRPCChainClient) NotifyBlocks() error { return nil }
+func (c *testRPCChainClient) Notifications() <-chan interface{} {
+	return make(chan interface{})
+}
+func (c *testRPCChainClient) BackEnd() string { return "test" }
+func (c *testRPCChainClient) TestMempoolAccept([]*wire.MsgTx,
+	float64) ([]*btcjson.TestMempoolAcceptResult, error) {
+
+	return nil, nil
+}
+func (c *testRPCChainClient) MapRPCErr(err error) error { return err }
+
+func testAgentWallet(t *testing.T, params *chaincfg.Params,
+	tipHeight int32) *wallet.Wallet {
+
+	t.Helper()
+
+	seed, err := hdkeychain.GenerateSeed(hdkeychain.MinSeedBytes)
+	if err != nil {
+		t.Fatalf("unable to generate wallet seed: %v", err)
+	}
+	pubPass := []byte("public")
+	privPass := []byte("private")
+
+	loader := wallet.NewLoader(
+		params, t.TempDir(), true, 10*time.Second, 250,
+		wallet.WithWalletSyncRetryInterval(10*time.Millisecond),
+	)
+	w, err := loader.CreateNewWallet(pubPass, privPass, seed, time.Now())
+	if err != nil {
+		t.Fatalf("unable to create wallet: %v", err)
+	}
+	if err := w.Unlock(privPass, time.After(10*time.Minute)); err != nil {
+		t.Fatalf("unable to unlock wallet: %v", err)
+	}
+
+	w.SynchronizeRPC(&testRPCChainClient{
+		blockStamp: &waddrmgr.BlockStamp{
+			Height: tipHeight,
+			Hash:   chainhash.Hash{},
+		},
+	})
+	w.SetChainSynced(true)
+
+	t.Cleanup(func() {
+		w.Stop()
+		w.WaitForShutdown()
+	})
+
+	return w
+}
+
+func setAgentWalletSyncedTo(t *testing.T, w *wallet.Wallet, height int32) {
+	t.Helper()
+
+	err := walletdb.Update(w.Database(), func(tx walletdb.ReadWriteTx) error {
+		ns := tx.ReadWriteBucket([]byte("waddrmgr"))
+		return w.Manager.SetSyncedTo(ns, &waddrmgr.BlockStamp{
+			Height: height,
+			Hash:   chainhash.Hash{},
+		})
+	})
+	if err != nil {
+		t.Fatalf("unable to set wallet sync height: %v", err)
+	}
+}
+
+func addAgentWalletUtxo(t *testing.T, w *wallet.Wallet, tx *wire.MsgTx,
+	height int32) {
+
+	t.Helper()
+
+	var buf bytes.Buffer
+	if err := tx.Serialize(&buf); err != nil {
+		t.Fatalf("unable to serialize tx: %v", err)
+	}
+	rec, err := wtxmgr.NewTxRecord(buf.Bytes(), time.Now())
+	if err != nil {
+		t.Fatalf("unable to create tx record: %v", err)
+	}
+
+	var blockHash chainhash.Hash
+	binary.LittleEndian.PutUint32(blockHash[:4], uint32(height))
+	block := &wtxmgr.BlockMeta{
+		Block: wtxmgr.Block{
+			Hash:   blockHash,
+			Height: height,
+		},
+		Time: time.Unix(1234, 0),
+	}
+
+	err = walletdb.Update(w.Database(), func(dbtx walletdb.ReadWriteTx) error {
+		ns := dbtx.ReadWriteBucket([]byte("wtxmgr"))
+		if err := w.TxStore.InsertTx(ns, rec, block); err != nil {
+			return err
+		}
+		for idx := range tx.TxOut {
+			if err := w.TxStore.AddCredit(
+				ns, rec, block, uint32(idx), false,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unable to add wallet UTXO: %v", err)
+	}
 }
 
 func TestReservationLockIDDeterministic(t *testing.T) {
@@ -960,6 +1186,119 @@ func TestSignPsbtAlreadySignedReturnsRecordedMetadata(t *testing.T) {
 	}
 	if resp.Operation.GetState() != operationStateSigned {
 		t.Fatalf("unexpected operation state: %s", resp.Operation.GetState())
+	}
+}
+
+func TestSignPsbtRejectsRemoteSignerWithoutOBTCReplayProtection(t *testing.T) {
+	params := &chaincfg.ObtcTestNetParams
+	activeAt := chaincfg.GetOBTCReplayProtectionHeight(params)
+
+	w := testAgentWallet(t, params, activeAt)
+	setAgentWalletSyncedTo(t, w, activeAt-2)
+
+	sourceAddr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0084)
+	if err != nil {
+		t.Fatalf("CurrentAddress error: %v", err)
+	}
+	sourceScript, err := txscript.PayToAddrScript(sourceAddr)
+	if err != nil {
+		t.Fatalf("source script error: %v", err)
+	}
+	targetAddr, err := w.NewAddress(0, waddrmgr.KeyScopeBIP0084)
+	if err != nil {
+		t.Fatalf("NewAddress error: %v", err)
+	}
+
+	incomingTx := &wire.MsgTx{
+		TxIn: []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{{
+			Value:    100000,
+			PkScript: sourceScript,
+		}},
+	}
+	addAgentWalletUtxo(t, w, incomingTx, activeAt-20)
+	selected := wire.OutPoint{
+		Hash:  incomingTx.TxHash(),
+		Index: 0,
+	}
+
+	store := newAgentWalletPersistentStore(testAgentWalletDB(t))
+	server := &agentWalletServer{
+		wallet:               w,
+		persistence:          store,
+		expiryPolicyProvider: compatibilityExpiryPolicyProvider{},
+		operations: map[string]*pb.Operation{
+			"op_1": {
+				OperationId:         "op_1",
+				WalletId:            defaultAgentWalletID,
+				Kind:                operationKindRenewSign,
+				State:               operationStateDraft,
+				Outpoints:           []string{selected.String()},
+				AccountNumber:       0,
+				MinConfirmations:    1,
+				CreatorPrincipal:    "agent:bot",
+				CreatorCapabilityId: "cap_1",
+				Summary: &pb.TransactionSummary{
+					TargetAddress:   targetAddr.EncodeAddress(),
+					TargetAmountSat: 50000,
+					FeeRateSatPerKb: 1000,
+					InputCount:      1,
+					TotalInputSat:   100000,
+				},
+			},
+		},
+		artifacts: map[string]*agentOperationArtifacts{
+			"op_1": {OperationID: "op_1"},
+		},
+		capabilities: map[string]*agentCapabilityRecord{
+			"cap_1": {
+				CapabilityID:  "cap_1",
+				WalletID:      defaultAgentWalletID,
+				Principal:     "agent:bot",
+				Permissions:   []string{capabilityPermissionRenewalSign},
+				CreatedAtUnix: 100,
+				ExpiresAtUnix: time.Now().Add(time.Hour).Unix(),
+				UpdatedAtUnix: 100,
+			},
+		},
+		signerSessions: map[string]*agentSignerSessionRecord{
+			"sess_1": {
+				SignerSessionID: "sess_1",
+				WalletID:        defaultAgentWalletID,
+				CapabilityID:    "cap_1",
+				Principal:       "agent:bot",
+				Permissions:     []string{capabilityPermissionRenewalSign},
+				CreatedAtUnix:   100,
+				ExpiresAtUnix:   time.Now().Add(time.Hour).Unix(),
+				UpdatedAtUnix:   100,
+			},
+		},
+		reservations: make(map[string]*agentReservationRecord),
+		signerBackend: &unprotectedFinalizingSignerBackend{
+			testSignerBackend: testSignerBackend{
+				activeSessions: map[string]struct{}{
+					"sess_1": {},
+				},
+			},
+			wallet: w,
+		},
+	}
+	server.persistenceLoadOnce.Do(func() {})
+
+	_, err = server.SignPsbt(context.Background(), &pb.SignPsbtRequest{
+		Meta: &pb.RequestMeta{
+			RequestId:    "req_1",
+			Principal:    "agent:bot",
+			CapabilityId: "cap_1",
+		},
+		OperationId:     "op_1",
+		SignerSessionId: "sess_1",
+	})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected failed precondition, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "replay-protection validation") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

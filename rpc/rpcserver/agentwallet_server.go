@@ -1182,6 +1182,11 @@ func (s *agentWalletServer) signRenewalOperation(operationID,
 		}
 		return nil, nil, nil, translateError(err)
 	}
+	if err := s.wallet.ValidateFinalizedPsbt(packet); err != nil {
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"signed PSBT failed local replay-protection validation: %v",
+			err)
+	}
 
 	signedPsbt, _, err := serializePsbt(packet)
 	if err != nil {
@@ -1334,6 +1339,11 @@ func (s *agentWalletServer) publishRenewalOperation(operationID string,
 	if err := psbt.MaybeFinalizeAll(packet); err != nil {
 		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
 			"signed PSBT is not finalized: %v", err)
+	}
+	if err := s.wallet.ValidateFinalizedPsbt(packet); err != nil {
+		return nil, nil, nil, status.Errorf(codes.FailedPrecondition,
+			"signed PSBT failed local replay-protection validation: %v",
+			err)
 	}
 
 	normalizedSignedPsbt, _, err := serializePsbt(packet)

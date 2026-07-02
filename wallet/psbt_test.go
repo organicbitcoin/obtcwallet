@@ -11,6 +11,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/psbt"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcwallet/waddrmgr"
@@ -568,6 +569,72 @@ func TestFundAndFinalizePsbtLegacyInput(t *testing.T) {
 
 	err = validateMsgTx(
 		finalTx, [][]byte{p2pkhScript}, []btcutil.Amount{utxoAmount},
+	)
+	require.NoError(t, err)
+}
+
+func TestFundAndFinalizePsbtUsesBackendReplayTarget(t *testing.T) {
+	t.Parallel()
+
+	params := &chaincfg.ObtcTestNetParams
+	activeAt := chaincfg.GetOBTCReplayProtectionHeight(params)
+
+	w, cleanup := testWalletWithChainParams(t, params)
+	defer cleanup()
+
+	setWalletSyncedTo(t, w, activeAt-2)
+	w.chainClient = &mockChainClient{
+		blockStamp: &waddrmgr.BlockStamp{Height: activeAt},
+	}
+
+	addr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0084)
+	require.NoError(t, err)
+	pkScript, err := txscript.PayToAddrScript(addr)
+	require.NoError(t, err)
+
+	const utxoAmount = 100000
+	incomingTx := &wire.MsgTx{
+		TxIn: []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{{
+			Value:    utxoAmount,
+			PkScript: pkScript,
+		}},
+	}
+	addUtxoAtHeight(t, w, incomingTx, activeAt-20)
+
+	packet := &psbt.Packet{
+		UnsignedTx: &wire.MsgTx{
+			TxOut: []*wire.TxOut{{
+				PkScript: pkScript,
+				Value:    50000,
+			}},
+		},
+		Outputs: []psbt.POutput{{}},
+	}
+
+	_, err = w.FundPsbt(
+		packet, nil, 1, 0, 1000, CoinSelectionLargest,
+	)
+	require.NoError(t, err)
+	require.Len(t, packet.Inputs, 1)
+	require.NotZero(
+		t, packet.Inputs[0].SighashType&txscript.SigHashOBTCReplayProtection,
+	)
+
+	err = w.FinalizePsbt(nil, 0, packet)
+	require.NoError(t, err)
+
+	finalTx, err := psbt.Extract(packet)
+	require.NoError(t, err)
+	witness := finalTx.TxIn[0].Witness
+	require.Len(t, witness, 2)
+	require.NotZero(
+		t, witness[0][len(witness[0])-1]&byte(txscript.SigHashOBTCReplayProtection),
+	)
+
+	err = validateMsgTxWithFlags(
+		finalTx, [][]byte{pkScript}, []btcutil.Amount{utxoAmount},
+		scriptVerifyFlagsForHeight(params, activeAt+1),
 	)
 	require.NoError(t, err)
 }

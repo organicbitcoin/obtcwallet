@@ -49,6 +49,8 @@ func (w *Wallet) FundPsbt(packet *psbt.Packet, keyScope *waddrmgr.KeyScope,
 	coinSelectionStrategy CoinSelectionStrategy,
 	optFuncs ...TxCreateOption) (int32, error) {
 
+	keyScope = w.keyScopePtrForChain(keyScope)
+
 	// Make sure the packet is well formed. We only require there to be at
 	// least one input or output.
 	err := psbt.VerifyInputOutputLen(packet, false, false)
@@ -274,6 +276,44 @@ func (w *Wallet) FundPsbt(packet *psbt.Packet, keyScope *waddrmgr.KeyScope,
 // boolean controls whether the method should return an error if it cannot
 // identify an input or if it should just skip it.
 func (w *Wallet) DecorateInputs(packet *psbt.Packet, failOnUnknown bool) error {
+	var (
+		sigHashAll     txscript.SigHashType
+		sigHashAllSet  bool
+		sigHashDefault txscript.SigHashType
+		defaultSet     bool
+	)
+	resolveHashType := func(hashType txscript.SigHashType) (
+		txscript.SigHashType, error) {
+
+		switch hashType {
+		case txscript.SigHashDefault:
+			if defaultSet {
+				return sigHashDefault, nil
+			}
+			resolved, err := w.signatureHashType(hashType)
+			if err != nil {
+				return 0, err
+			}
+			sigHashDefault = resolved
+			defaultSet = true
+			return sigHashDefault, nil
+
+		case txscript.SigHashAll:
+			if sigHashAllSet {
+				return sigHashAll, nil
+			}
+			resolved, err := w.signatureHashType(hashType)
+			if err != nil {
+				return 0, err
+			}
+			sigHashAll = resolved
+			sigHashAllSet = true
+			return sigHashAll, nil
+		}
+
+		return w.signatureHashType(hashType)
+	}
+
 	for idx := range packet.Inputs {
 		txIn := packet.UnsignedTx.TxIn[idx]
 
@@ -299,22 +339,34 @@ func (w *Wallet) DecorateInputs(packet *psbt.Packet, failOnUnknown bool) error {
 
 		switch {
 		case txscript.IsPayToTaproot(utxo.PkScript):
+			hashType, err := resolveHashType(txscript.SigHashDefault)
+			if err != nil {
+				return err
+			}
 			addInputInfoSegWitV1(
 				&packet.Inputs[idx], utxo, derivationPath,
-				w.signatureHashType(txscript.SigHashDefault),
+				hashType,
 			)
 
 		case txscript.IsPayToPubKeyHash(utxo.PkScript):
+			hashType, err := resolveHashType(txscript.SigHashAll)
+			if err != nil {
+				return err
+			}
 			addInputInfoLegacy(
 				&packet.Inputs[idx], tx, derivationPath,
-				w.signatureHashType(txscript.SigHashAll),
+				hashType,
 			)
 
 		default:
+			hashType, err := resolveHashType(txscript.SigHashAll)
+			if err != nil {
+				return err
+			}
 			addInputInfoSegWitV0(
 				&packet.Inputs[idx], tx, utxo, derivationPath,
 				addr, witnessProgram,
-				w.signatureHashType(txscript.SigHashAll),
+				hashType,
 			)
 		}
 	}
@@ -536,7 +588,9 @@ func (w *Wallet) FinalizePsbt(keyScope *waddrmgr.KeyScope, account uint32,
 				// key scope provided doesn't impact the result
 				// of this call.
 				watchOnly, err = w.Manager.IsWatchOnlyAccount(
-					ns, waddrmgr.KeyScopeBIP0084, account,
+					ns,
+					w.keyScopeForChain(waddrmgr.KeyScopeBIP0084),
+					account,
 				)
 			} else {
 				watchOnly, err = w.Manager.IsWatchOnlyAccount(
@@ -582,6 +636,91 @@ func (w *Wallet) FinalizePsbt(keyScope *waddrmgr.KeyScope, account uint32,
 	err = psbt.MaybeFinalizeAll(packet)
 	if err != nil {
 		return fmt.Errorf("error finalizing PSBT: %w", err)
+	}
+
+	if err := w.ValidateFinalizedPsbt(packet); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func psbtInputPrevOutput(packet *psbt.Packet, idx int) (*wire.TxOut, error) {
+	if packet == nil || packet.UnsignedTx == nil {
+		return nil, errors.New("PSBT packet missing unsigned transaction")
+	}
+	if idx >= len(packet.Inputs) || idx >= len(packet.UnsignedTx.TxIn) {
+		return nil, fmt.Errorf("PSBT input %d out of range", idx)
+	}
+
+	in := packet.Inputs[idx]
+	if in.NonWitnessUtxo != nil {
+		prevIndex := packet.UnsignedTx.TxIn[idx].PreviousOutPoint.Index
+		if prevIndex >= uint32(len(in.NonWitnessUtxo.TxOut)) {
+			return nil, fmt.Errorf("input %d references output %d "+
+				"but previous transaction only has %d outputs",
+				idx, prevIndex, len(in.NonWitnessUtxo.TxOut))
+		}
+
+		return in.NonWitnessUtxo.TxOut[prevIndex], nil
+	}
+	if in.WitnessUtxo != nil {
+		return in.WitnessUtxo, nil
+	}
+
+	return nil, fmt.Errorf("input %d is missing UTXO information", idx)
+}
+
+func psbtPrevScriptsAndInputValues(packet *psbt.Packet) ([][]byte,
+	[]btcutil.Amount, error) {
+
+	if packet == nil || packet.UnsignedTx == nil {
+		return nil, nil, errors.New("PSBT packet missing unsigned transaction")
+	}
+	if len(packet.Inputs) != len(packet.UnsignedTx.TxIn) {
+		return nil, nil, fmt.Errorf("PSBT input count %d does not match "+
+			"transaction input count %d", len(packet.Inputs),
+			len(packet.UnsignedTx.TxIn))
+	}
+
+	prevScripts := make([][]byte, len(packet.UnsignedTx.TxIn))
+	inputValues := make([]btcutil.Amount, len(packet.UnsignedTx.TxIn))
+	for idx := range packet.UnsignedTx.TxIn {
+		prevOutput, err := psbtInputPrevOutput(packet, idx)
+		if err != nil {
+			return nil, nil, err
+		}
+		prevScripts[idx] = prevOutput.PkScript
+		inputValues[idx] = btcutil.Amount(prevOutput.Value)
+	}
+
+	return prevScripts, inputValues, nil
+}
+
+// ValidateFinalizedPsbt validates a finalized PSBT against the wallet's current
+// signing target policy. On OBTC networks after replay-protection activation,
+// this requires every input signature to include SigHashOBTCReplayProtection.
+func (w *Wallet) ValidateFinalizedPsbt(packet *psbt.Packet) error {
+	verifyFlags, err := w.scriptVerifyFlags()
+	if err != nil {
+		return err
+	}
+
+	tx, err := psbt.Extract(packet)
+	if err != nil {
+		return fmt.Errorf("failed to extract finalized PSBT: %w", err)
+	}
+
+	prevScripts, inputValues, err := psbtPrevScriptsAndInputValues(packet)
+	if err != nil {
+		return err
+	}
+
+	if err := validateMsgTxWithFlags(
+		tx, prevScripts, inputValues, verifyFlags,
+	); err != nil {
+		return fmt.Errorf("finalized PSBT failed signature validation: %w",
+			err)
 	}
 
 	return nil

@@ -1639,6 +1639,7 @@ func (w *Wallet) AccountAddresses(account uint32) (addrs []btcutil.Address, err 
 func (w *Wallet) AccountManagedAddresses(scope waddrmgr.KeyScope,
 	accountNum uint32) ([]waddrmgr.ManagedAddress, error) {
 
+	scope = w.keyScopeForChain(scope)
 	scopedMgr, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -1780,6 +1781,7 @@ func (w *Wallet) CurrentAddress(account uint32, scope waddrmgr.KeyScope) (btcuti
 		return nil, err
 	}
 
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -1976,6 +1978,7 @@ func (w *Wallet) AddressInfo(a btcutil.Address) (waddrmgr.ManagedAddress, error)
 // AccountNumber returns the account number for an account name under a
 // particular key scope.
 func (w *Wallet) AccountNumber(scope waddrmgr.KeyScope, accountName string) (uint32, error) {
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return 0, err
@@ -1993,6 +1996,7 @@ func (w *Wallet) AccountNumber(scope waddrmgr.KeyScope, accountName string) (uin
 
 // AccountName returns the name of an account.
 func (w *Wallet) AccountName(scope waddrmgr.KeyScope, accountNumber uint32) (string, error) {
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return "", err
@@ -2012,6 +2016,7 @@ func (w *Wallet) AccountName(scope waddrmgr.KeyScope, accountNumber uint32) (str
 // indexes and name. It first fetches the desynced information from the address
 // manager, then updates the indexes based on the address pools.
 func (w *Wallet) AccountProperties(scope waddrmgr.KeyScope, acct uint32) (*waddrmgr.AccountProperties, error) {
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -2033,6 +2038,7 @@ func (w *Wallet) AccountProperties(scope waddrmgr.KeyScope, acct uint32) (*waddr
 func (w *Wallet) AccountPropertiesByName(scope waddrmgr.KeyScope,
 	name string) (*waddrmgr.AccountProperties, error) {
 
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -2069,6 +2075,7 @@ func (w *Wallet) LookupAccount(name string) (waddrmgr.KeyScope, uint32, error) {
 
 // RenameAccount sets the name for an account number to newName.
 func (w *Wallet) RenameAccount(scope waddrmgr.KeyScope, account uint32, newName string) error {
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return err
@@ -2096,6 +2103,7 @@ func (w *Wallet) RenameAccount(scope waddrmgr.KeyScope, account uint32, newName 
 // accounts have no transaction history (this is a deviation from the BIP0044
 // spec, which allows no unused account gaps).
 func (w *Wallet) NextAccount(scope waddrmgr.KeyScope, name string) (uint32, error) {
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return 0, err
@@ -2692,6 +2700,7 @@ type AccountsResult struct {
 // TODO(jrick): Is the chain tip really needed, since only the total balances
 // are included?
 func (w *Wallet) Accounts(scope waddrmgr.KeyScope) (*AccountsResult, error) {
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -2768,6 +2777,7 @@ type AccountBalanceResult struct {
 func (w *Wallet) AccountBalances(scope waddrmgr.KeyScope,
 	requiredConfs int32) ([]AccountBalanceResult, error) {
 
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -3283,6 +3293,7 @@ func (w *Wallet) NewAddress(account uint32,
 	if err != nil {
 		return nil, err
 	}
+	scope = w.keyScopeForChain(scope)
 
 	// The address manager uses OnCommit on the walletdb tx to update the
 	// in-memory state of the account state. But because the commit happens
@@ -3321,6 +3332,7 @@ func (w *Wallet) NewAddress(account uint32,
 func (w *Wallet) newAddress(addrmgrNs walletdb.ReadWriteBucket, account uint32,
 	scope waddrmgr.KeyScope) (btcutil.Address, *waddrmgr.AccountProperties, error) {
 
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, nil, err
@@ -3350,6 +3362,7 @@ func (w *Wallet) NewChangeAddress(account uint32,
 	if err != nil {
 		return nil, err
 	}
+	scope = w.keyScopeForChain(scope)
 
 	// The address manager uses OnCommit on the walletdb tx to update the
 	// in-memory state of the account state. But because the commit happens
@@ -3388,6 +3401,7 @@ func (w *Wallet) NewChangeAddress(account uint32,
 func (w *Wallet) newChangeAddress(addrmgrNs walletdb.ReadWriteBucket,
 	account uint32, scope waddrmgr.KeyScope) (btcutil.Address, error) {
 
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -3660,9 +3674,12 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	additionalKeysByAddress map[string]*btcutil.WIF,
 	p2shRedeemScriptsByAddress map[string][]byte) ([]SignatureError, error) {
 
-	hashType = w.signatureHashType(hashType)
+	hashType, verifyFlags, err := w.signingPolicy(hashType)
+	if err != nil {
+		return nil, err
+	}
 	var signErrors []SignatureError
-	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {
+	err = walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 		txmgrNs := dbtx.ReadBucket(wtxmgrNamespaceKey)
 
@@ -3766,7 +3783,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 			// Find out if it is completely satisfied or still needs more.
 			vm, err := txscript.NewEngine(
 				prevOutScript, tx, i,
-				w.scriptVerifyFlags(), nil, nil, 0,
+				verifyFlags, nil, nil, 0,
 				inputFetcher,
 			)
 			if err == nil {
@@ -4034,6 +4051,23 @@ func (w *Wallet) publishTransaction(tx *wire.MsgTx) (*chainhash.Hash, error) {
 // belongs to.
 func (w *Wallet) ChainParams() *chaincfg.Params {
 	return w.chainParams
+}
+
+func (w *Wallet) keyScopeForChain(
+	scope waddrmgr.KeyScope) waddrmgr.KeyScope {
+
+	return waddrmgr.KeyScopeForChainParams(scope, w.chainParams)
+}
+
+func (w *Wallet) keyScopePtrForChain(
+	scope *waddrmgr.KeyScope) *waddrmgr.KeyScope {
+
+	if scope == nil {
+		return nil
+	}
+
+	mappedScope := w.keyScopeForChain(*scope)
+	return &mappedScope
 }
 
 // Database returns the underlying walletdb database. This method is provided

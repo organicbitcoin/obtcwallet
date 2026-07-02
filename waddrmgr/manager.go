@@ -671,6 +671,12 @@ func (m *Manager) ScopesForInternalAddrTypes(addrType AddressType) []KeyScope {
 	return m.internalAddrSchemas[addrType]
 }
 
+// IsDefaultScope returns true when scope is one of the wallet's default scopes
+// for the manager's chain parameters.
+func (m *Manager) IsDefaultScope(scope KeyScope) bool {
+	return IsDefaultScopeForChainParams(scope, m.chainParams)
+}
+
 // NeuterRootKey is a special method that should be used once a caller is
 // *certain* that no further scoped managers are to be created. This method
 // will *delete* the encrypted master HD root private key from the database.
@@ -830,13 +836,7 @@ func (m *Manager) ForEachRelevantActiveAddress(ns walletdb.ReadBucket,
 		// If the manager is for a default key scope, we'll return all
 		// addresses, otherwise we'll only return internal addresses, as
 		// that's the branch used for change addresses.
-		isDefaultKeyScope := false
-		for _, defaultKeyScope := range DefaultKeyScopes {
-			if scopedMgr.Scope() == defaultKeyScope {
-				isDefaultKeyScope = true
-				break
-			}
-		}
+		isDefaultKeyScope := m.IsDefaultScope(scopedMgr.Scope())
 
 		var err error
 		if isDefaultKeyScope {
@@ -1823,7 +1823,7 @@ func Create(ns walletdb.ReadWriteBucket, rootKey *hdkeychain.ExtendedKey,
 	// Perform the initial bucket creation and database namespace setup.
 	defaultScopes := map[KeyScope]ScopeAddrSchema{}
 	if !isWatchingOnly {
-		defaultScopes = ScopeAddrMap
+		defaultScopes = ScopeAddrMapForChainParams(chainParams)
 	}
 	if err := createManagerNS(ns, defaultScopes); err != nil {
 		return maybeConvertDbError(err)
@@ -1930,7 +1930,9 @@ func Create(ns walletdb.ReadWriteBucket, rootKey *hdkeychain.ExtendedKey,
 		// Next, for each registers default manager scope, we'll
 		// create the hardened cointype key for it, as well as the
 		// first default account.
-		for _, defaultScope := range DefaultKeyScopes {
+		for _, defaultScope := range DefaultKeyScopesForChainParams(
+			chainParams,
+		) {
 			err := createManagerKeyScope(
 				ns, defaultScope, rootKey, cryptoKeyPub, cryptoKeyPriv,
 			)

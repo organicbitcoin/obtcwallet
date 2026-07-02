@@ -604,7 +604,7 @@ func TestSelectUtxosTxoToOutpoint(t *testing.T) {
 func TestTxToOutputsSkipsExpiredOBTCUtxos(t *testing.T) {
 	t.Parallel()
 
-	w, cleanup := testWallet(t)
+	w, cleanup := testWalletWithChainParams(t, &chaincfg.ObtcRegTestParams)
 	defer cleanup()
 
 	const tipHeight = int32(241)
@@ -616,7 +616,6 @@ func TestTxToOutputsSkipsExpiredOBTCUtxos(t *testing.T) {
 	pkScript, err := txscript.PayToAddrScript(addr)
 	require.NoError(t, err)
 
-	w.chainParams = &chaincfg.ObtcRegTestParams
 	w.chainClient = &mockChainClient{
 		blockStamp: &waddrmgr.BlockStamp{Height: tipHeight},
 	}
@@ -643,4 +642,50 @@ func TestTxToOutputsSkipsExpiredOBTCUtxos(t *testing.T) {
 	require.Len(t, tx.Tx.TxIn, 1)
 	require.Equal(t, liveTx.TxHash(), tx.Tx.TxIn[0].PreviousOutPoint.Hash)
 	require.EqualValues(t, 0, tx.Tx.TxIn[0].PreviousOutPoint.Index)
+}
+
+func TestTxToOutputsUsesBackendReplayTarget(t *testing.T) {
+	t.Parallel()
+
+	params := &chaincfg.ObtcTestNetParams
+	activeAt := chaincfg.GetOBTCReplayProtectionHeight(params)
+
+	w, cleanup := testWalletWithChainParams(t, params)
+	defer cleanup()
+
+	setWalletSyncedTo(t, w, activeAt-2)
+	w.chainClient = &mockChainClient{
+		blockStamp: &waddrmgr.BlockStamp{Height: activeAt},
+	}
+
+	addr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0084)
+	require.NoError(t, err)
+	pkScript, err := txscript.PayToAddrScript(addr)
+	require.NoError(t, err)
+
+	utxo := wire.NewTxOut(100000, pkScript)
+	incomingTx := &wire.MsgTx{
+		TxIn:  []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{utxo},
+	}
+	addUtxoAtHeight(t, w, incomingTx, activeAt-20)
+
+	tx, err := w.txToOutputs(
+		[]*wire.TxOut{{PkScript: pkScript, Value: 50000}},
+		nil, nil, 0, 1, 1000, CoinSelectionLargest, false,
+		nil, alwaysAllowUtxo,
+	)
+	require.NoError(t, err)
+	require.Len(t, tx.Tx.TxIn, 1)
+	witness := tx.Tx.TxIn[0].Witness
+	require.Len(t, witness, 2)
+	require.NotZero(
+		t, witness[0][len(witness[0])-1]&byte(txscript.SigHashOBTCReplayProtection),
+	)
+
+	err = validateMsgTxWithFlags(
+		tx.Tx, tx.PrevScripts, tx.PrevInputValues,
+		scriptVerifyFlagsForHeight(params, activeAt+1),
+	)
+	require.NoError(t, err)
 }

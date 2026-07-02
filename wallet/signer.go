@@ -89,7 +89,10 @@ func (w *Wallet) ComputeInputScript(tx *wire.MsgTx, output *wire.TxOut,
 	hashType txscript.SigHashType, tweaker PrivKeyTweaker) (wire.TxWitness,
 	[]byte, error) {
 
-	hashType = w.signatureHashType(hashType)
+	hashType, err := w.signatureHashType(hashType)
+	if err != nil {
+		return nil, nil, err
+	}
 	walletAddr, witnessProgram, sigScript, err := w.ScriptForOutput(output)
 	if err != nil {
 		return nil, nil, err

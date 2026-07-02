@@ -82,12 +82,11 @@ func TestWalletLockedStateObservableForRenewalGuards(t *testing.T) {
 func TestAutoRenewBuildCandidatesAppliesWindowAmountCapAndOrder(t *testing.T) {
 	t.Parallel()
 
-	w, cleanup := testWallet(t)
+	w, cleanup := testWalletWithChainParams(t, &chaincfg.ObtcRegTestParams)
 	defer cleanup()
 
 	const tipHeight = int32(100)
 	setWalletSyncedTo(t, w, tipHeight)
-	w.chainParams = &chaincfg.ObtcRegTestParams
 
 	addr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0084)
 	require.NoError(t, err)

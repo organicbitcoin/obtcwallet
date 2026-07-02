@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcwallet/waddrmgr"
+	"github.com/stretchr/testify/require"
 )
 
 // TestComputeInputScript checks that the wallet can create the full input
@@ -120,4 +122,64 @@ func runTestCase(t *testing.T, w *Wallet, scope waddrmgr.KeyScope,
 	if err != nil {
 		t.Fatalf("error validating tx: %v", err)
 	}
+}
+
+func TestComputeInputScriptUsesBackendReplayTarget(t *testing.T) {
+	t.Parallel()
+
+	params := &chaincfg.ObtcTestNetParams
+	activeAt := chaincfg.GetOBTCReplayProtectionHeight(params)
+
+	w, cleanup := testWalletWithChainParams(t, params)
+	defer cleanup()
+
+	setWalletSyncedTo(t, w, activeAt-2)
+	w.chainClient = &mockChainClient{
+		blockStamp: &waddrmgr.BlockStamp{Height: activeAt},
+	}
+
+	addr, err := w.CurrentAddress(0, waddrmgr.KeyScopeBIP0084)
+	require.NoError(t, err)
+	pkScript, err := txscript.PayToAddrScript(addr)
+	require.NoError(t, err)
+
+	utxo := wire.NewTxOut(100000, pkScript)
+	incomingTx := &wire.MsgTx{
+		TxIn:  []*wire.TxIn{{}},
+		TxOut: []*wire.TxOut{utxo},
+	}
+	addUtxoAtHeight(t, w, incomingTx, activeAt-20)
+
+	spendTx := &wire.MsgTx{
+		TxIn: []*wire.TxIn{{
+			PreviousOutPoint: wire.OutPoint{
+				Hash:  incomingTx.TxHash(),
+				Index: 0,
+			},
+		}},
+		TxOut: []*wire.TxOut{utxo},
+	}
+	fetcher := txscript.NewCannedPrevOutputFetcher(
+		utxo.PkScript, utxo.Value,
+	)
+	sigHashes := txscript.NewTxSigHashes(spendTx, fetcher)
+
+	witness, script, err := w.ComputeInputScript(
+		spendTx, utxo, 0, sigHashes, txscript.SigHashAll, nil,
+	)
+	require.NoError(t, err)
+	require.Empty(t, script)
+	require.Len(t, witness, 2)
+	require.NotEmpty(t, witness[0])
+	require.NotZero(
+		t, witness[0][len(witness[0])-1]&byte(txscript.SigHashOBTCReplayProtection),
+	)
+
+	spendTx.TxIn[0].Witness = witness
+	err = validateMsgTxWithFlags(
+		spendTx, [][]byte{utxo.PkScript},
+		[]btcutil.Amount{btcutil.Amount(utxo.Value)},
+		scriptVerifyFlagsForHeight(params, activeAt+1),
+	)
+	require.NoError(t, err)
 }

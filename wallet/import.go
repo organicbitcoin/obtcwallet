@@ -8,6 +8,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcwallet/netparams"
 	"github.com/btcsuite/btcwallet/waddrmgr"
@@ -27,11 +28,27 @@ const (
 // extended public key. The address type can usually be inferred from the key's
 // version, but may be required for certain keys to map them into the proper
 // scope.
-func keyScopeFromPubKey(pubKey *hdkeychain.ExtendedKey,
-	addrType *waddrmgr.AddressType) (waddrmgr.KeyScope,
-	*waddrmgr.ScopeAddrSchema, error) {
+func (w *Wallet) keyScopeFromPubKey(pubKey *hdkeychain.ExtendedKey,
+	addrType *waddrmgr.AddressType) (keyScope waddrmgr.KeyScope,
+	addrSchema *waddrmgr.ScopeAddrSchema, err error) {
 
-	switch waddrmgr.HDVersion(binary.BigEndian.Uint32(pubKey.Version())) {
+	defer func() {
+		if err == nil {
+			keyScope = w.keyScopeForChain(keyScope)
+		}
+	}()
+
+	version := waddrmgr.HDVersion(binary.BigEndian.Uint32(pubKey.Version()))
+	if chaincfg.IsOBTC(w.chainParams) {
+		chainPubVersion := waddrmgr.HDVersion(binary.BigEndian.Uint32(
+			w.chainParams.HDPublicKeyID[:],
+		))
+		if version == chainPubVersion {
+			return keyScopeFromLegacyPubKey(addrType)
+		}
+	}
+
+	switch version {
 	// For BIP-0044 keys, an address type must be specified as we intend to
 	// not support importing BIP-0044 keys into the wallet using the legacy
 	// pay-to-pubkey-hash (P2PKH) scheme. A nested witness address type will
@@ -117,6 +134,46 @@ func keyScopeFromPubKey(pubKey *hdkeychain.ExtendedKey,
 	}
 }
 
+func keyScopeFromLegacyPubKey(addrType *waddrmgr.AddressType) (
+	waddrmgr.KeyScope, *waddrmgr.ScopeAddrSchema, error) {
+
+	if addrType == nil {
+		return waddrmgr.KeyScope{}, nil, errors.New("address " +
+			"type must be specified for account public key with " +
+			"legacy version")
+	}
+
+	switch *addrType {
+	case waddrmgr.NestedWitnessPubKey:
+		return waddrmgr.KeyScopeBIP0049Plus,
+			&waddrmgr.KeyScopeBIP0049AddrSchema, nil
+
+	case waddrmgr.WitnessPubKey:
+		return waddrmgr.KeyScopeBIP0084, nil, nil
+
+	case waddrmgr.TaprootPubKey:
+		return waddrmgr.KeyScopeBIP0086, nil, nil
+
+	default:
+		return waddrmgr.KeyScope{}, nil,
+			fmt.Errorf("unsupported address type %v", *addrType)
+	}
+}
+
+func isOBTCBitcoinCompatHDVersion(version waddrmgr.HDVersion) bool {
+	switch version {
+	case waddrmgr.HDVersionMainNetBIP0049,
+		waddrmgr.HDVersionMainNetBIP0084,
+		waddrmgr.HDVersionTestNetBIP0049,
+		waddrmgr.HDVersionTestNetBIP0084:
+
+		return true
+
+	default:
+		return false
+	}
+}
+
 // isPubKeyForNet determines if the given public key is for the current network
 // the wallet is operating under.
 func (w *Wallet) isPubKeyForNet(pubKey *hdkeychain.ExtendedKey) bool {
@@ -176,6 +233,15 @@ func (w *Wallet) validateExtendedPubKey(pubKey *hdkeychain.ExtendedKey,
 	if !w.isPubKeyForNet(pubKey) {
 		return fmt.Errorf("expected extended public key for current "+
 			"network %v", w.chainParams.Name)
+	}
+	version := waddrmgr.HDVersion(binary.BigEndian.Uint32(pubKey.Version()))
+	if chaincfg.IsOBTC(w.chainParams) &&
+		isOBTCBitcoinCompatHDVersion(version) {
+
+		log.Warnf("Accepted Bitcoin SLIP-0132 extended public key "+
+			"version %x on OBTC network %s as a compatibility alias; "+
+			"imported account uses OBTC coin type %d",
+			uint32(version), w.chainParams.Name, w.chainParams.HDCoinType)
 	}
 
 	// Verify the extended public key's depth and child index based on
@@ -249,6 +315,7 @@ func (w *Wallet) ImportAccountWithScope(name string,
 	keyScope waddrmgr.KeyScope, addrSchema waddrmgr.ScopeAddrSchema) (
 	*waddrmgr.AccountProperties, error) {
 
+	keyScope = w.keyScopeForChain(keyScope)
 	var accountProps *waddrmgr.AccountProperties
 	err := walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
 		ns := tx.ReadWriteBucket(waddrmgrNamespaceKey)
@@ -275,7 +342,9 @@ func (w *Wallet) importAccount(ns walletdb.ReadWriteBucket, name string,
 
 	// Determine what key scope the account public key should belong to and
 	// whether it should use a custom address schema.
-	keyScope, addrSchema, err := keyScopeFromPubKey(accountPubKey, addrType)
+	keyScope, addrSchema, err := w.keyScopeFromPubKey(
+		accountPubKey, addrType,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +361,7 @@ func (w *Wallet) importAccountScope(ns walletdb.ReadWriteBucket, name string,
 	keyScope waddrmgr.KeyScope, addrSchema *waddrmgr.ScopeAddrSchema) (
 	*waddrmgr.AccountProperties, error) {
 
+	keyScope = w.keyScopeForChain(keyScope)
 	scopedMgr, err := w.Manager.FetchScopedKeyManager(keyScope)
 	if err != nil {
 		scopedMgr, err = w.Manager.NewScopedKeyManager(
@@ -424,6 +494,7 @@ func (w *Wallet) ImportPublicKey(pubKey *btcec.PublicKey,
 	default:
 		return fmt.Errorf("address type %v is not supported", addrType)
 	}
+	keyScope = w.keyScopeForChain(keyScope)
 
 	scopedKeyManager, err := w.Manager.FetchScopedKeyManager(keyScope)
 	if err != nil {
@@ -459,6 +530,7 @@ func (w *Wallet) ImportTaprootScript(scope waddrmgr.KeyScope,
 	witnessVersion byte, isSecretScript bool) (waddrmgr.ManagedAddress,
 	error) {
 
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return nil, err
@@ -513,6 +585,7 @@ func (w *Wallet) ImportTaprootScript(scope waddrmgr.KeyScope,
 func (w *Wallet) ImportPrivateKey(scope waddrmgr.KeyScope, wif *btcutil.WIF,
 	bs *waddrmgr.BlockStamp, rescan bool) (string, error) {
 
+	scope = w.keyScopeForChain(scope)
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
 		return "", err
