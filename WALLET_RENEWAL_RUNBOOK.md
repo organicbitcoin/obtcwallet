@@ -3,25 +3,90 @@
 This runbook is for external reviewers validating wallet expiry visibility and
 renewal behavior on regtest or testnet. Do not use mainnet funds for rehearsal.
 
-## Start Wallet
+## Choose A Rehearsal Network
 
-Start an OBTC-aware node with expiry index enabled:
+Use one of these paths for the whole run. Do not mix testnet and regtest node,
+wallet, or agent ports.
+
+### Testnet Path
+
+Start an OBTC testnet node with expiry index enabled:
 
 ```bash
-obtcd --obtcmainnet --expiryindex
+obtcd --obtctestnet \
+  --rpclisten=127.0.0.1:19528 \
+  --rpcuser=testuser \
+  --rpcpass=testpass \
+  --txindex \
+  --expiryindex \
+  --notls
 ```
 
-Start `obtcwallet` against the intended non-mainnet environment. Keep
-auto-renew disabled unless this run is explicitly testing it:
+Start `obtcwallet` against that node. Keep auto-renew disabled unless this run
+is explicitly testing it:
 
 ```bash
-obtcwallet \
-  --obtcmainnet=0 \
+obtcwallet --obtctestnet \
+  --rpcconnect=127.0.0.1:19528 \
+  --btcdusername=testuser \
+  --btcdpassword=testpass \
+  --username=walletuser \
+  --password=walletpass \
+  --rpclisten=127.0.0.1:19554 \
+  --experimentalrpclisten=127.0.0.1:19556 \
+  --noclienttls \
+  --noservertls \
   --autorenew=0
 ```
 
-For agent gRPC workflows, use the agent listener configured by the wallet. The
-`renewall` CLI default is `localhost:19556`.
+Use these endpoints for the rest of the testnet run:
+
+| Surface | Endpoint |
+|---|---|
+| Node RPC | `127.0.0.1:19528` |
+| Wallet legacy RPC | `http://127.0.0.1:19554/` |
+| Agent gRPC | `127.0.0.1:19556` |
+
+### Regtest Path
+
+Start an OBTC regtest node with expiry index enabled:
+
+```bash
+obtcd --obtcregtest \
+  --rpclisten=127.0.0.1:29528 \
+  --rpcuser=testuser \
+  --rpcpass=testpass \
+  --txindex \
+  --expiryindex \
+  --notls
+```
+
+Start `obtcwallet` against that node:
+
+```bash
+obtcwallet --obtcregtest \
+  --rpcconnect=127.0.0.1:29528 \
+  --btcdusername=testuser \
+  --btcdpassword=testpass \
+  --username=walletuser \
+  --password=walletpass \
+  --rpclisten=127.0.0.1:29554 \
+  --experimentalrpclisten=127.0.0.1:29556 \
+  --noclienttls \
+  --noservertls \
+  --autorenew=0
+```
+
+Use these endpoints for the rest of the regtest run:
+
+| Surface | Endpoint |
+|---|---|
+| Node RPC | `127.0.0.1:29528` |
+| Wallet legacy RPC | `http://127.0.0.1:29554/` |
+| Agent gRPC | `127.0.0.1:29556` |
+
+The `renewall` CLI default `localhost:19556` matches the testnet agent path.
+Pass `--connect=127.0.0.1:29556` explicitly for regtest.
 
 ## View Expiry
 
@@ -31,7 +96,16 @@ Legacy wallet RPC:
 curl --user "$WALLET_RPC_USER:$WALLET_RPC_PASS" \
   --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.getexpiry","params":[20]}' \
   -H 'content-type:text/plain;' \
-  http://127.0.0.1:8332/
+  http://127.0.0.1:19554/
+```
+
+Regtest uses the same request against the regtest wallet RPC port:
+
+```bash
+curl --user "$WALLET_RPC_USER:$WALLET_RPC_PASS" \
+  --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.getexpiry","params":[20]}' \
+  -H 'content-type:text/plain;' \
+  http://127.0.0.1:29554/
 ```
 
 Review these fields for each item:
@@ -54,19 +128,30 @@ Use dry-run before signing or publishing:
 
 ```bash
 renewall \
-  --connect localhost:19556 \
+  --connect=127.0.0.1:19556 \
   --notls \
   --amount 0.5 \
   --limit 10 \
   --dry-run
 ```
 
-Useful filters:
+Regtest dry-run uses the regtest agent listener:
 
 ```bash
-renewall --amount 0.5 --dry-run --window-start 52560 --window-end 25920
-renewall --amount 0.5 --dry-run --include-expired
-renewall --amount 0.5 --dry-run --include-near-expiry
+renewall \
+  --connect=127.0.0.1:29556 \
+  --notls \
+  --amount 0.5 \
+  --limit 10 \
+  --dry-run
+```
+
+Useful filters, using the same `--connect` value selected above:
+
+```bash
+renewall --connect=127.0.0.1:19556 --notls --amount 0.5 --dry-run --window-start 52560 --window-end 25920
+renewall --connect=127.0.0.1:19556 --notls --amount 0.5 --dry-run --include-expired
+renewall --connect=127.0.0.1:19556 --notls --amount 0.5 --dry-run --include-near-expiry
 ```
 
 Dry-run must not open a signer session, preview a renewal, submit a renewal, or
@@ -81,7 +166,16 @@ Renew a specific outpoint through legacy wallet RPC:
 curl --user "$WALLET_RPC_USER:$WALLET_RPC_PASS" \
   --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.renew","params":[["TXID:VOUT"],0.5]}' \
   -H 'content-type:text/plain;' \
-  http://127.0.0.1:8332/
+  http://127.0.0.1:19554/
+```
+
+Regtest uses the regtest wallet RPC port:
+
+```bash
+curl --user "$WALLET_RPC_USER:$WALLET_RPC_PASS" \
+  --data-binary '{"jsonrpc":"1.0","id":"obtc","method":"obtc.renew","params":[["TXID:VOUT"],0.5]}' \
+  -H 'content-type:text/plain;' \
+  http://127.0.0.1:29554/
 ```
 
 Optional parameters:
@@ -99,7 +193,20 @@ Non-dry-run `renewall` requires a synced funded wallet and signer access:
 
 ```bash
 renewall \
-  --connect localhost:19556 \
+  --connect=127.0.0.1:19556 \
+  --notls \
+  --walletpass "$WALLET_PRIVATE_PASSPHRASE" \
+  --amount 0.5 \
+  --limit 5 \
+  --maxfeerate 0.00005 \
+  --minconf 1
+```
+
+Regtest execution uses the regtest agent listener:
+
+```bash
+renewall \
+  --connect=127.0.0.1:29556 \
   --notls \
   --walletpass "$WALLET_PRIVATE_PASSPHRASE" \
   --amount 0.5 \
@@ -124,7 +231,16 @@ Auto-renew is disabled by default. Enable only in controlled regtest/testnet
 rehearsal:
 
 ```bash
-obtcwallet \
+obtcwallet --obtctestnet \
+  --rpcconnect=127.0.0.1:19528 \
+  --btcdusername=testuser \
+  --btcdpassword=testpass \
+  --username=walletuser \
+  --password=walletpass \
+  --rpclisten=127.0.0.1:19554 \
+  --experimentalrpclisten=127.0.0.1:19556 \
+  --noclienttls \
+  --noservertls \
   --autorenew=1 \
   --autorenewamount=0.5 \
   --autorenewinterval=30m \

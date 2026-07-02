@@ -258,6 +258,87 @@ func IsDefaultScope(scope KeyScope) bool {
 	return false
 }
 
+// KeyScopeForChainParams maps one of the wallet's standard key scopes to the
+// coin type selected by chain parameters. Bitcoin networks intentionally keep
+// the historic wallet coin type 0; OBTC networks use their isolated
+// chaincfg.HDCoinType values.
+func KeyScopeForChainParams(scope KeyScope,
+	chainParams *chaincfg.Params) KeyScope {
+
+	if chainParams == nil || !chaincfg.IsOBTC(chainParams) {
+		return scope
+	}
+
+	switch scope.Purpose {
+	case KeyScopeBIP0044.Purpose, KeyScopeBIP0049Plus.Purpose,
+		KeyScopeBIP0084.Purpose, KeyScopeBIP0086.Purpose:
+
+		if scope.Coin == KeyScopeBIP0044.Coin {
+			scope.Coin = chainParams.HDCoinType
+		}
+	}
+
+	return scope
+}
+
+// DefaultKeyScopesForChainParams returns the default wallet scopes for the
+// target chain. Existing Bitcoin wallets keep coin type 0, while new OBTC
+// wallets use the project-local OBTC coin type from chain parameters.
+func DefaultKeyScopesForChainParams(
+	chainParams *chaincfg.Params) []KeyScope {
+
+	scopes := make([]KeyScope, len(DefaultKeyScopes))
+	for idx, scope := range DefaultKeyScopes {
+		scopes[idx] = KeyScopeForChainParams(scope, chainParams)
+	}
+
+	return scopes
+}
+
+// ScopeAddrMapForChainParams returns the default scope-to-address-schema map
+// for the target chain.
+func ScopeAddrMapForChainParams(
+	chainParams *chaincfg.Params) map[KeyScope]ScopeAddrSchema {
+
+	scopes := DefaultKeyScopesForChainParams(chainParams)
+	scopeAddrMap := make(map[KeyScope]ScopeAddrSchema, len(scopes))
+	for idx, scope := range scopes {
+		scopeAddrMap[scope] = ScopeAddrMap[DefaultKeyScopes[idx]]
+	}
+
+	return scopeAddrMap
+}
+
+// ScopeAddrSchemaForChainParams returns the address schema for a standard
+// scope after applying the target chain's coin type policy.
+func ScopeAddrSchemaForChainParams(scope KeyScope,
+	chainParams *chaincfg.Params) (ScopeAddrSchema, bool) {
+
+	mappedScope := KeyScopeForChainParams(scope, chainParams)
+	scopeAddrMap := ScopeAddrMapForChainParams(chainParams)
+	schema, ok := scopeAddrMap[mappedScope]
+	if ok {
+		return schema, true
+	}
+
+	schema, ok = ScopeAddrMap[scope]
+	return schema, ok
+}
+
+// IsDefaultScopeForChainParams returns true when scope is one of the standard
+// wallet scopes for the target chain.
+func IsDefaultScopeForChainParams(scope KeyScope,
+	chainParams *chaincfg.Params) bool {
+
+	for _, defaultScope := range DefaultKeyScopesForChainParams(chainParams) {
+		if defaultScope == scope {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ScopedKeyManager is a sub key manager under the main root key manager. The
 // root key manager will handle the root HD key (m/), while each sub scoped key
 // manager will handle the cointype key for a particular key scope
@@ -608,7 +689,7 @@ func (s *ScopedKeyManager) AccountProperties(ns walletdb.ReadBucket,
 		// the account public key consistent with what the caller
 		// provided. Note that his is only done for the default key
 		// scopes, as we only know the HD versions for those.
-		isDefaultKeyScope := IsDefaultScope(s.scope)
+		isDefaultKeyScope := s.rootManager.IsDefaultScope(s.scope)
 		if acctInfo.acctType == accountDefault && isDefaultKeyScope {
 			props.AccountPubKey, err = s.cloneKeyWithVersion(
 				acctInfo.acctKeyPub,
@@ -2568,24 +2649,12 @@ func (s *ScopedKeyManager) cloneKeyWithVersion(key *hdkeychain.ExtendedKey) (
 
 	case wire.ObtcMainNet, wire.ObtcTestNet, wire.ObtcRegNet:
 		switch s.scope {
-		case KeyScopeBIP0044, KeyScopeBIP0086:
+		case KeyScopeForChainParams(KeyScopeBIP0044, chainParams),
+			KeyScopeForChainParams(KeyScopeBIP0049Plus, chainParams),
+			KeyScopeForChainParams(KeyScopeBIP0084, chainParams),
+			KeyScopeForChainParams(KeyScopeBIP0086, chainParams):
+
 			versionBytes = chainParams.HDPublicKeyID
-		case KeyScopeBIP0049Plus:
-			if net == wire.ObtcMainNet {
-				binary.BigEndian.PutUint32(versionBytes[:],
-					uint32(HDVersionMainNetBIP0049))
-			} else {
-				binary.BigEndian.PutUint32(versionBytes[:],
-					uint32(HDVersionTestNetBIP0049))
-			}
-		case KeyScopeBIP0084:
-			if net == wire.ObtcMainNet {
-				binary.BigEndian.PutUint32(versionBytes[:],
-					uint32(HDVersionMainNetBIP0084))
-			} else {
-				binary.BigEndian.PutUint32(versionBytes[:],
-					uint32(HDVersionTestNetBIP0084))
-			}
 		default:
 			return nil, fmt.Errorf("unsupported scope %v", s.scope)
 		}

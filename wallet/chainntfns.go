@@ -373,7 +373,7 @@ func (w *Wallet) addRelevantTx(dbtx walletdb.ReadWriteTx, rec *wtxmgr.TxRecord,
 			if err != nil {
 				return err
 			}
-			if !waddrmgr.IsDefaultScope(scopedManager.Scope()) {
+			if !w.Manager.IsDefaultScope(scopedManager.Scope()) {
 				log.Debugf("Skipping non-default scope "+
 					"address %v", addr)
 

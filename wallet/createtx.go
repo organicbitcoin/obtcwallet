@@ -145,6 +145,9 @@ func (w *Wallet) txToOutputs(outputs []*wire.TxOut,
 	allowUtxo func(utxo wtxmgr.Credit) bool) (
 	*txauthor.AuthoredTx, error) {
 
+	coinSelectKeyScope = w.keyScopePtrForChain(coinSelectKeyScope)
+	changeKeyScope = w.keyScopePtrForChain(changeKeyScope)
+
 	chainClient, err := w.requireChainClient()
 	if err != nil {
 		return nil, err
@@ -292,7 +295,9 @@ func (w *Wallet) txToOutputs(outputs []*wire.TxOut,
 			// (NP2WKH, P2WKH, P2TR), so any key scope provided
 			// doesn't impact the result of this call.
 			watchOnly, err = w.Manager.IsWatchOnlyAccount(
-				addrmgrNs, waddrmgr.KeyScopeBIP0086, account,
+				addrmgrNs,
+				w.keyScopeForChain(waddrmgr.KeyScopeBIP0086),
+				account,
 			)
 		} else {
 			watchOnly, err = w.Manager.IsWatchOnlyAccount(
@@ -303,9 +308,14 @@ func (w *Wallet) txToOutputs(outputs []*wire.TxOut,
 			return err
 		}
 		if !watchOnly {
+			hashType, verifyFlags, err := w.signingPolicy(
+				txscript.SigHashAll,
+			)
+			if err != nil {
+				return err
+			}
 			err = tx.AddAllInputScriptsWithHashType(
-				secretSource{w.Manager, addrmgrNs},
-				w.signatureHashType(txscript.SigHashAll),
+				secretSource{w.Manager, addrmgrNs}, hashType,
 			)
 			if err != nil {
 				return err
@@ -313,7 +323,7 @@ func (w *Wallet) txToOutputs(outputs []*wire.TxOut,
 
 			err = validateMsgTxWithFlags(
 				tx.Tx, tx.PrevScripts, tx.PrevInputValues,
-				w.scriptVerifyFlags(),
+				verifyFlags,
 			)
 			if err != nil {
 				return err
@@ -455,9 +465,19 @@ func (w *Wallet) addrMgrWithChangeSource(dbtx walletdb.ReadWriteTx,
 	// Determine the address type for change addresses of the given
 	// account.
 	if changeKeyScope == nil {
-		changeKeyScope = &waddrmgr.KeyScopeBIP0086
+		defaultChangeScope := w.keyScopeForChain(waddrmgr.KeyScopeBIP0086)
+		changeKeyScope = &defaultChangeScope
+	} else {
+		changeKeyScope = w.keyScopePtrForChain(changeKeyScope)
 	}
-	addrType := waddrmgr.ScopeAddrMap[*changeKeyScope].InternalAddrType
+	addrSchema, ok := waddrmgr.ScopeAddrSchemaForChainParams(
+		*changeKeyScope, w.chainParams,
+	)
+	if !ok {
+		return nil, nil, fmt.Errorf("unknown change scope %v",
+			*changeKeyScope)
+	}
+	addrType := addrSchema.InternalAddrType
 
 	// It's possible for the account to have an address schema override, so
 	// prefer that if it exists.

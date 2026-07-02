@@ -2013,27 +2013,33 @@ func TestAccountPropertiesSupportsOBTCNetworks(t *testing.T) {
 			}
 			defer mgr.Close()
 
-			scopedMgr, err := mgr.FetchScopedKeyManager(KeyScopeBIP0044)
-			if err != nil {
-				t.Fatalf("FetchScopedKeyManager: %v", err)
-			}
-
 			err = walletdb.View(db, func(tx walletdb.ReadTx) error {
 				ns := tx.ReadBucket(waddrmgrNamespaceKey)
-				props, err := scopedMgr.AccountProperties(
-					ns, DefaultAccountNum,
-				)
-				if err != nil {
-					return err
-				}
-				if props.AccountPubKey == nil {
-					t.Fatal("expected account public key")
-				}
-				got := props.AccountPubKey.Version()
-				want := params.HDPublicKeyID[:]
-				if string(got) != string(want) {
-					t.Fatalf("unexpected account pubkey version: got=%x want=%x",
-						got, want)
+				for _, scope := range DefaultKeyScopesForChainParams(
+					params,
+				) {
+					scopedMgr, err := mgr.FetchScopedKeyManager(
+						scope,
+					)
+					if err != nil {
+						return err
+					}
+					props, err := scopedMgr.AccountProperties(
+						ns, DefaultAccountNum,
+					)
+					if err != nil {
+						return err
+					}
+					if props.AccountPubKey == nil {
+						t.Fatal("expected account public key")
+					}
+					got := props.AccountPubKey.Version()
+					want := params.HDPublicKeyID[:]
+					if string(got) != string(want) {
+						t.Fatalf("unexpected account pubkey "+
+							"version for %v: got=%x want=%x",
+							scope, got, want)
+					}
 				}
 				return nil
 			})
@@ -2041,6 +2047,34 @@ func TestAccountPropertiesSupportsOBTCNetworks(t *testing.T) {
 				t.Fatalf("AccountProperties: %v", err)
 			}
 		})
+	}
+}
+
+func TestDefaultKeyScopesUseOBTCCoinTypes(t *testing.T) {
+	for _, params := range []*chaincfg.Params{
+		&chaincfg.ObtcMainNetParams,
+		&chaincfg.ObtcTestNetParams,
+		&chaincfg.ObtcRegTestParams,
+	} {
+		params := params
+		t.Run(params.Name, func(t *testing.T) {
+			scopes := DefaultKeyScopesForChainParams(params)
+			require.Len(t, scopes, len(DefaultKeyScopes))
+			for _, scope := range scopes {
+				require.Equal(t, params.HDCoinType, scope.Coin)
+			}
+
+			scopeMap := ScopeAddrMapForChainParams(params)
+			for _, scope := range scopes {
+				_, ok := scopeMap[scope]
+				require.True(t, ok, "missing schema for %v", scope)
+			}
+		})
+	}
+
+	scopes := DefaultKeyScopesForChainParams(&chaincfg.MainNetParams)
+	for _, scope := range scopes {
+		require.Equal(t, uint32(0), scope.Coin)
 	}
 }
 
