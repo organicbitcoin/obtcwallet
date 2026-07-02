@@ -33,8 +33,8 @@ It does not approve real-fund or production wallet use.
 - PR #12 merged the replay-signing height policy fix, OBTC HD coin-type policy,
   imported xpub compatibility warning/tests, and local finalized PSBT replay
   validation.
-- Current MC1 source commit:
-  `0bde8d27b8853fd9cf58e0084dba12788a32fab2`.
+- Current MC1 gate-cleanup baseline:
+  `ea0070517641fa9f0ba5731b903aae1c57f24d5a`.
 - MC1 is source-only: no project-built wallet archive and no project
   `SHA256SUMS` are distributed for this scope.
 
