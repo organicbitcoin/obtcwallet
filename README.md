@@ -10,14 +10,18 @@ path still inherit that upstream shape, so examples use `btcwallet` and
 
 ## Status
 
-`obtcwallet-testnet-v0.1.0` is a source-only engineering preview. It is meant
-for developers and reviewers who want to reproduce the current OBTC testnet
-wallet flow. It is not a production wallet release and does not include
-prebuilt binaries.
+`v0.1.0-mainnet-candidate.1` is a source-only external technical review
+candidate. It is meant for developers and reviewers who want to reproduce the
+current OBTC wallet flow from source. It is not a production wallet release and
+does not include project-built binary artifacts or project `SHA256SUMS`.
 
 Current public release:
 
 - [obtcwallet-testnet-v0.1.0](https://github.com/organicbitcoin/obtcwallet/releases/tag/obtcwallet-testnet-v0.1.0)
+
+Current MC1 source commit:
+
+- `0bde8d27b8853fd9cf58e0084dba12788a32fab2`
 
 Current milestone:
 
@@ -80,8 +84,10 @@ OBTC operation.
   remains a follow-up validation item until public txids are recorded.
 - `renewall` does not support the `publish_only` signer backend yet.
 - Remote signer code exists, but it is outside the v0.1 release scope.
-- Auto-renew is opt-in via `--autorenew` and should stay disabled unless it has
-  been separately validated for your deployment.
+- Auto-renew is opt-in via `--autorenew`, disabled by default, and not
+  recommended as an MC1 operator path. Funded scheduler validation is deferred.
+- Funded-wallet failure-mode guidance is recorded in
+  [`WALLET_OPERATOR_RISK_REVIEW.md`](WALLET_OPERATOR_RISK_REVIEW.md).
 - The repository still inherits upstream `btcwallet` package names, paths, and
   some documentation structure.
 
@@ -103,8 +109,9 @@ go build -o ./renewall ./cmd/renewall
 go build -o ./walletapp ./cmd/walletapp
 ```
 
-To produce a checksumed operator artifact directory for a frozen candidate
-commit:
+MC1 is source-only, so no project-built wallet archive or project `SHA256SUMS`
+is distributed for this release scope. To produce a local checksumed artifact
+directory for a later operator drill:
 
 ```bash
 scripts/release/build_release_artifacts.sh --version mainnet-candidate-2026-07

@@ -227,8 +227,9 @@ The command should:
 
 ## Configure Auto-Renew
 
-Auto-renew is disabled by default. Enable only in controlled regtest/testnet
-rehearsal:
+Auto-renew is disabled by default and is not recommended as an MC1 operator
+path. The example below is only for controlled regtest/testnet rehearsal when
+the test objective is specifically auto-renew behavior:
 
 ```bash
 obtcwallet --obtctestnet \

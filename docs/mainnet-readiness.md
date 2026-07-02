@@ -1,9 +1,10 @@
 # OBTCWallet Mainnet Readiness
 
-Checked: 2026-05-20
+Checked: 2026-07-02
 
-This file records the wallet-side checks that matter before treating an OBTC
-mainnet-candidate wallet as ready for real funds.
+This file records the wallet-side checks that matter before treating
+`obtcwallet` as ready for the MC1 source-only external technical review release.
+It does not approve real-fund or production wallet use.
 
 ## Checks Completed
 
@@ -29,6 +30,13 @@ mainnet-candidate wallet as ready for real funds.
   mainnet-affecting options commented by default.
 - `sample-btcwallet.conf` now warns not to use the sample configuration with
   valuable mainnet funds until this readiness list is closed.
+- PR #12 merged the replay-signing height policy fix, OBTC HD coin-type policy,
+  imported xpub compatibility warning/tests, and local finalized PSBT replay
+  validation.
+- Current MC1 source commit:
+  `0bde8d27b8853fd9cf58e0084dba12788a32fab2`.
+- MC1 is source-only: no project-built wallet archive and no project
+  `SHA256SUMS` are distributed for this scope.
 
 ## Mainnet-Candidate Capability Boundary
 
@@ -54,23 +62,26 @@ Supported claims for mainnet-candidate documentation:
   without signing or publishing.
 - Auto-renew exists only as opt-in operator automation and is disabled by
   default.
+- Auto-renew is not recommended as an MC1 operator path.
+- Funded-wallet failure-mode guidance is recorded in
+  `WALLET_OPERATOR_RISK_REVIEW.md`.
 
 Conditional or evidence-gated claims:
 
-- Funded `obtc.renew` remains evidence-gated until a public txid, command, and
-  node-height record are attached to the release evidence.
-- Non-dry-run `renewall` remains evidence-gated. If it is not validated before
-  mainnet-candidate, release notes must explicitly exclude it from the first
-  operating scope.
-- Backup, restore, wallet unlock, restart, and rescan flows require operator
-  evidence before they are described as mainnet-candidate-ready.
+- Funded `obtc.renew` and non-dry-run `renewall` evidence exists from the public
+  testnet records, but MC1 still does not recommend valuable-fund wallet use.
+- Backup, restore, wallet unlock, restart, and rescan guidance is summarized in
+  `WALLET_OPERATOR_RISK_REVIEW.md`.
 - Remote signer usage is out of scope unless an end-to-end operator run is
   recorded.
+- Funded auto-renew scheduler evidence is deferred to a later RC/production
+  readiness gate.
 
 Explicitly out of scope for mainnet-candidate:
 
 - Production wallet readiness.
 - Default-on auto-renew.
+- Recommended auto-renew operation.
 - `publish_only` signer backend support.
 - Exchange, custody, or broad end-user wallet support.
 - Any recommendation to store valuable mainnet funds before the open gaps below
@@ -78,14 +89,8 @@ Explicitly out of scope for mainnet-candidate:
 
 ## Open Gaps
 
-- Record a funded OBTC testnet or mainnet-candidate `obtc.renew` transaction
-  with txid, wallet command, and node height evidence:
-  [#2](https://github.com/organicbitcoin/obtcwallet/issues/2).
-- Record a non-dry-run `renewall` transaction with txid, or explicitly exclude
-  non-dry-run `renewall` from the first mainnet-candidate operating scope:
-  [#3](https://github.com/organicbitcoin/obtcwallet/issues/3).
 - Validate `--autorenew` on a funded controlled environment before enabling it
-  for any mainnet-candidate wallet:
+  for any recommended operator path:
   [#4](https://github.com/organicbitcoin/obtcwallet/issues/4).
 - Decide whether the `publish_only` signer backend is required for the first
   mainnet-candidate wallet operator flow; it is not implemented yet:
@@ -93,16 +98,8 @@ Explicitly out of scope for mainnet-candidate:
 - Exercise the remote signer path end-to-end if it remains in the operator
   story; current mainnet-candidate scope should otherwise document local signer
   only: [#5](https://github.com/organicbitcoin/obtcwallet/issues/5).
-- Produce operator evidence for backup, restore, wallet unlock, renewal,
-  restart, and rescan paths using OBTC network directories:
-  [#6](https://github.com/organicbitcoin/obtcwallet/issues/6).
-- Publish release artifacts, checksums, and operator build instructions for the
-  exact commit used by mainnet-candidate operators:
-  [#7](https://github.com/organicbitcoin/obtcwallet/issues/7).
-- Perform a focused review of funded-wallet failure modes: wrong network flag,
-  wrong RPC endpoint, disabled TLS scope, exposed wallet RPC, stale chain tip,
-  insufficient confirmations, and renewal amount mistakes:
-  [#8](https://github.com/organicbitcoin/obtcwallet/issues/8).
+- Funded remote signer or publish-only evidence if either path enters a later
+  operator release scope.
 
-All issues are tracked under the `mainnet-candidate-2026-07` milestone with
-the `operator-readiness` label.
+Closed or downgraded MC1 gate issues are tracked in the `obtcd`
+`FINAL_ISSUE_GATE_REVIEW.md`.
