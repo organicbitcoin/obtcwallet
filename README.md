@@ -19,9 +19,9 @@ Current public release:
 
 - [obtcwallet-testnet-v0.1.0](https://github.com/organicbitcoin/obtcwallet/releases/tag/obtcwallet-testnet-v0.1.0)
 
-Current MC1 source commit:
+Current MC1 gate-cleanup baseline:
 
-- `0bde8d27b8853fd9cf58e0084dba12788a32fab2`
+- `ea0070517641fa9f0ba5731b903aae1c57f24d5a`
 
 Current milestone:
 

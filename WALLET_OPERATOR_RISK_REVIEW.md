@@ -6,8 +6,8 @@ Scope: `v0.1.0-mainnet-candidate.1` source-only external technical review. This
 is not a production wallet release and not a recommendation to hold valuable
 mainnet funds.
 
-Assessed source commit:
-`0bde8d27b8853fd9cf58e0084dba12788a32fab2`.
+Assessed gate-cleanup baseline:
+`ea0070517641fa9f0ba5731b903aae1c57f24d5a`.
 
 ## Summary
 
@@ -94,4 +94,3 @@ before broader wallet readiness claims:
   release scope;
 - stable product wording for locked-wallet renewal errors if funded operators
   rely on the legacy RPC surface.
-
