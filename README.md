@@ -233,6 +233,8 @@ For launch-tracking work, prefer the
 milestone and the labels `mainnet-blocker`, `evidence`, `comms`, and
 `post-launch`.
 
+Maintained by [Pengyu Zhao](https://github.com/zpengyu).
+
 ## License
 
 OBTCWallet is licensed under the liberal ISC License.
