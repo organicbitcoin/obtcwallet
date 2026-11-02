@@ -1,29 +1,46 @@
 ---
 name: Bug report
-about: Create a bug report. Please use the discussions section for general or troubleshooting questions.
+about: Report a reproducible OBTC wallet, renewal, expiry, signing, or RPC problem.
 title: '[bug]: '
-labels: ["bug", "needs triage"]
+labels: ["bug"]
 assignees: ''
 ---
 
-### Background
+## Safety check
 
-Describe your issue here.
+Do not continue with a public report if this issue contains exploit details,
+seed phrases, private keys, passphrases, RPC credentials, wallet backups,
+private endpoints, or unredacted sensitive logs. Use private vulnerability
+reporting instead.
 
-### Your environment
+## Summary
 
-* version of `btcwallet`
-* which operating system (`uname -a` on *Nix)
-* any other relevant environment details
+Describe the problem and its impact.
 
-### Steps to reproduce
+## Environment
 
-Tell us how to reproduce this issue. Please provide stacktraces and links to code in question.
+- `obtcwallet` commit hash:
+- connected `obtcd` commit hash:
+- network (`obtcmainnet`, `obtctestnet`, or `obtcregtest`):
+- operating system and architecture:
+- `go version`:
+- relevant flags and RPC surfaces, with credentials removed:
 
-### Expected behaviour
+## Steps to reproduce
 
-Tell us what should happen
+List the smallest reliable sequence of commands or actions. Use only testnet or
+regtest funds and newly created test wallets in public reproductions.
 
-### Actual behaviour
+## Expected result
 
-Tell us what happens instead
+What should have happened?
+
+## Actual result
+
+What happened instead?
+
+## Redacted evidence
+
+Include relevant heights, txids, RPC responses, stack traces, or logs. Remove
+credentials, wallet material, private addresses, hostnames, usernames, and
+local filesystem paths that reveal personal information.

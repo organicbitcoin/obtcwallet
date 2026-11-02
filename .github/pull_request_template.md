@@ -1,19 +1,32 @@
-## Change Description
-Description of change / link to associated issue.
+## Purpose
 
-## Steps to Test
-Steps for reviewers to follow to test the change.
+Describe the problem, the change, and the linked issue.
 
-## Pull Request Checklist
-### Testing
-- [ ] Your PR passes all CI checks.
-- [ ] Tests covering the positive and negative (error paths) are included.
-- [ ] Bug fixes contain tests triggering the bug to prevent regressions.
+## Scope and risk
 
-### Code Style and Documentation
-- [ ] The change is not [insubstantial](https://github.com/btcsuite/btcwallet/blob/master/docs/developer/contribution_guidelines.md#substantial-contributions-only). Typo fixes are not accepted to fight bot spam.
-- [ ] The change obeys the [Code Documentation and Commenting](https://github.com/btcsuite/btcwallet/blob/master/docs/developer/contribution_guidelines.md#code-documentation-and-commenting) guidelines, and lines wrap at 80.
-- [ ] Commits follow the [Ideal Git Commit Structure](https://github.com/btcsuite/btcwallet/blob/master/docs/developer/contribution_guidelines.md#ideal-git-commit-structure).
+- Network: `none` / `obtcmainnet` / `obtctestnet` / `obtcregtest`
+- [ ] Signing or key management
+- [ ] Renewal or expiry boundaries
+- [ ] Network selection or address namespaces
+- [ ] RPC exposure or authentication
+- [ ] Funds or transaction publication
+- [ ] No item above is affected
+
+For every checked risk area, explain positive, negative, and boundary cases and
+any compatibility or migration effect.
+
+## Verification
+
+List exact commands and results. Include the OS, Go version, wallet commit, node
+commit, and network when the result depends on the environment.
+
+## Checklist
+
+- [ ] I followed [CONTRIBUTING.md](https://github.com/organicbitcoin/obtcwallet/blob/master/CONTRIBUTING.md).
+- [ ] The change is focused and contains no unrelated key, network, or fund-safety changes.
+- [ ] Tests cover relevant success, rejection, and boundary behavior, or the PR explains why tests are not applicable.
+- [ ] A bug fix includes a regression test when practical.
+- [ ] Documentation matches current code and does not claim unverified network or release readiness.
+- [ ] Logs, examples, screenshots, and fixtures contain no secrets, wallet material, or private identity data.
+- [ ] Go changes are formatted with `gofmt`, and CI passes.
 - [ ] Any new logging statements use an appropriate subsystem and logging level.
-
-📝 Please see our [Contribution Guidelines](https://github.com/btcsuite/btcwallet/blob/master/docs/developer/contribution_guidelines.md) for further guidance.

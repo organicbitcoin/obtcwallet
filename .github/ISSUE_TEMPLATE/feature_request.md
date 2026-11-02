@@ -1,19 +1,29 @@
 ---
 name: Feature request
-about: Suggest a new feature for `btcwallet`.
+about: Propose a focused improvement to the OBTC wallet, testnet flow, tooling, or documentation.
 title: '[feature]: '
 labels: enhancement
 assignees: ''
 ---
 
-**Is your feature request related to a problem? Please describe.**
-<!-- A clear and concise description of what the problem is. Ex. I'm always frustrated when [...] -->
+## Problem
 
-**Describe the solution you'd like**
-<!-- A clear and concise description of what you want to happen. -->
+What concrete wallet or contributor problem would this solve?
 
-**Describe alternatives you've considered**
-<!-- A clear and concise description of any alternative solutions or features you've considered. -->
+## Proposed outcome
 
-**Additional context**
-<!-- Add any other context or screenshots about the feature request here. -->
+Describe the observable result rather than prescribing an implementation when
+possible.
+
+## Scope and risk
+
+- affected network or environment:
+- related files or components:
+- does this affect signing, key management, renewal, expiry boundaries, network
+  selection, RPC exposure, or funds?
+- compatibility or migration considerations:
+
+## Alternatives and verification
+
+What alternatives did you consider? How could a reviewer verify the successful
+and failure paths safely on testnet or regtest?
