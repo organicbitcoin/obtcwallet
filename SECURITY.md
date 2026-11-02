@@ -25,10 +25,11 @@ Do not open a public issue with seed phrases, private keys, wallet backups,
 signing material, real-fund claim attempts, unpublished peer details, private
 logs, or exploit details.
 
-For sensitive wallet reports, use GitHub private vulnerability reporting for the
-OBTC project if it is available. If private reporting is not available, open a
-minimal public issue asking for a secure reporting channel and include no
-secrets, exploit details, or real wallet material.
+For sensitive wallet reports, use
+[GitHub private vulnerability reporting](https://github.com/organicbitcoin/obtcwallet/security/advisories/new).
+It is enabled for this repository. If GitHub does not offer the private form to
+your account, open a minimal public issue asking for a secure reporting channel
+and include no secrets, exploit details, or real wallet material.
 
 Use public wallet issues only for non-sensitive bugs, documentation gaps,
 reproducible testnet-only failures, and questions that do not reveal private

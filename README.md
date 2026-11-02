@@ -10,20 +10,20 @@ path still inherit that upstream shape, so examples use `btcwallet` and
 
 ## Status
 
-`v0.1.0-mainnet-candidate.1` is a source-only external technical review
-candidate. It is meant for developers and reviewers who want to reproduce the
-current OBTC wallet flow from source. It is not a production wallet release and
-does not include project-built binary artifacts or project `SHA256SUMS`.
+This repository is prerelease research software open for technical review. It
+is meant for developers and reviewers who want to reproduce the current OBTC
+wallet flow from source. It is not a production wallet release, and no public
+mainnet launch date is announced.
 
 Current public release:
 
 - [obtcwallet-testnet-v0.1.0](https://github.com/organicbitcoin/obtcwallet/releases/tag/obtcwallet-testnet-v0.1.0)
 
-Current MC1 gate-cleanup baseline:
+Historical MC1 gate-cleanup baseline:
 
 - `ea0070517641fa9f0ba5731b903aae1c57f24d5a`
 
-Current milestone:
+Historical milestone, now closed:
 
 - [mainnet-candidate-2026-07](https://github.com/organicbitcoin/obtcwallet/milestone/1)
 
@@ -114,7 +114,7 @@ is distributed for this release scope. To produce a local checksumed artifact
 directory for a later operator drill:
 
 ```bash
-scripts/release/build_release_artifacts.sh --version mainnet-candidate-2026-07
+scripts/release/build_release_artifacts.sh --version technical-review-dev
 ```
 
 ## Test
@@ -228,12 +228,10 @@ mainnet-candidate work:
 
 <https://github.com/organicbitcoin/obtcwallet/issues>
 
-For launch-tracking work, prefer the
-[`mainnet-candidate-2026-07`](https://github.com/organicbitcoin/obtcwallet/milestone/1)
-milestone and the labels `mainnet-blocker`, `evidence`, `comms`, and
-`post-launch`.
-
-Maintained by [Pengyu Zhao](https://github.com/zpengyu).
+The dated `mainnet-candidate-2026-07` milestone is closed and retained for
+historical context. Current work is tracked in the issue list without an
+announced launch date. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a
+pull request.
 
 ## License
 
