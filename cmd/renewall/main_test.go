@@ -909,3 +909,163 @@ func TestRunRenewAllOnceLocalSignerRequiresWalletPass(t *testing.T) {
 		t.Fatalf("local path without walletpass should stop before session open")
 	}
 }
+
+// The agent RPC is the only way the CLI reads wallet state, so an unreachable
+// or refusing endpoint has to stop the run before any renewal work and keep the
+// transport error in the message the operator sees (#17).
+func TestRunRenewAllOnceReportsWalletStateRPCFailure(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = true
+
+	filter, err := newRenewFilter(false, false, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateErr: errors.New(
+			"rpc error: code = Unavailable desc = connection refused"),
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = runRenewAllOnce(client, filter, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "GetWalletState failed") ||
+		!strings.Contains(err.Error(), "connection refused") {
+
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(client.getExpiryRiskReqs) != 0 {
+		t.Fatalf("an unreachable agent should stop before GetExpiryRisk")
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("unexpected output stdout=%q stderr=%q", stdout.String(),
+			stderr.String())
+	}
+}
+
+// A wallet that answers but cannot list expiry risk must not fall through to a
+// capability or signer session: the failure belongs to the query that asked for
+// the candidates (#17).
+func TestRunRenewAllOnceReportsExpiryRiskRPCFailure(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = false
+	opts.WalletPass = "topsecret"
+
+	filter, err := newRenewFilter(false, true, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskErr: errors.New(
+			"rpc error: code = DeadlineExceeded desc = context deadline exceeded"),
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = runRenewAllOnce(client, filter, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "GetExpiryRisk failed") ||
+		!strings.Contains(err.Error(), "context deadline exceeded") {
+
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(client.issueCapabilityReqs) != 0 ||
+		len(client.openSignerSessionReqs) != 0 {
+
+		t.Fatalf("a failed expiry query should not open a session")
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("unexpected output stdout=%q stderr=%q", stdout.String(),
+			stderr.String())
+	}
+}
+
+// Balance checks live on the agent, so an underfunded wallet fails at submit
+// time. The CLI has to report that reason for the outpoint and still clean up
+// the capability and signer session (#17).
+func TestRunRenewAllOnceReportsInsufficientFunds(t *testing.T) {
+	useTestOpts(t)
+	opts.DryRun = false
+	opts.WalletPass = "topsecret"
+	opts.Amount = 0.02
+	opts.MaxFeeRate = 0.00005
+
+	filter, err := newRenewFilter(false, true, -1, -1, 12)
+	if err != nil {
+		t.Fatalf("new renew filter: %v", err)
+	}
+
+	client := &fakeAgentWalletClient{
+		getWalletStateResp: &pb.GetWalletStateResponse{
+			Meta: &pb.ResponseMeta{},
+			State: &pb.WalletState{
+				WalletId:    opts.WalletID,
+				ChainSynced: true,
+				SignerBackend: &pb.SignerBackendInfo{
+					Mode: "local",
+				},
+			},
+		},
+		getExpiryRiskResp: &pb.GetExpiryRiskResponse{
+			Meta: &pb.ResponseMeta{},
+			Items: []*pb.ExpiryRisk{
+				{Outpoint: "underfunded:0", Status: "expiring", BlocksToExpiry: 20},
+			},
+		},
+		issueCapabilityResp: &pb.IssueCapabilityResponse{
+			Meta:       &pb.ResponseMeta{},
+			Capability: &pb.Capability{CapabilityId: "cap-1"},
+		},
+		openSignerSessionResp: &pb.OpenSignerSessionResponse{
+			Meta:    &pb.ResponseMeta{},
+			Session: &pb.SignerSession{SignerSessionId: "sess-1"},
+		},
+		previewRenewalResp: &pb.PreviewRenewalResponse{
+			Meta:      &pb.ResponseMeta{},
+			Operation: &pb.Operation{OperationId: "op-1"},
+		},
+		submitRenewalErr: errors.New(
+			"insufficient funds available: need 2050000 sat, have 400000 sat"),
+		closeSessionResp: &pb.CloseSignerSessionResponse{
+			Meta: &pb.ResponseMeta{},
+		},
+		revokeCapabilityResp: &pb.RevokeCapabilityResponse{Meta: &pb.ResponseMeta{}},
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := runRenewAllOnce(client, filter, &stdout, &stderr); err != nil {
+		t.Fatalf("runRenewAllOnce: %v", err)
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+	errOut := stderr.String()
+	for _, want := range []string{
+		"renew failed for underfunded:0",
+		"insufficient funds available",
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("stderr missing %q: %q", want, errOut)
+		}
+	}
+	if len(client.submitRenewalReqs) != 1 {
+		t.Fatalf("expected one submit attempt, got %d",
+			len(client.submitRenewalReqs))
+	}
+	if len(client.closeSessionReqs) != 1 || len(client.revokeCapabilityReqs) != 1 {
+		t.Fatalf("expected capability and signer session cleanup after the failure")
+	}
+}
