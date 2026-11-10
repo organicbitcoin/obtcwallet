@@ -25,6 +25,8 @@ semantics, default auto-renew behavior, signing models, or network parameters.
 | `renewall --dry-run` | Existing `TestRunRenewAllOnceDryRunUsesAgentRiskQuery`, new `TestRunRenewAllOnceDryRunNoCandidatesIsClearNoop` | Verifies dry-run queries risk, prints selected outpoints, does not preview or submit, and reports no candidates as a normal result. |
 | `renewall` execution | Existing `TestRunRenewAllOnceExecutesViaAgentFlow` | Verifies capability, signer session, preview, submit, cleanup, and output reporting. |
 | `renewall` fee/minconf/target and partial failures | `TestRunRenewAllOncePassesFeeMinconfTargetAndReportsFailures` | Verifies max fee rate, minconf, target address, amount, outpoint, and failure reasons reach the agent flow and stderr. |
+| `renewall` agent RPC failures | New `TestRunRenewAllOnceReportsWalletStateRPCFailure`, `TestRunRenewAllOnceReportsExpiryRiskRPCFailure` | Verifies an unreachable agent stops before the expiry query, and a failed expiry query stops before any capability or signer session, with the transport error kept in the message the operator sees. |
+| `renewall` insufficient funds | New `TestRunRenewAllOnceReportsInsufficientFunds` | Verifies the agent's balance refusal is reported for the outpoint on stderr, no success line is printed, and the capability and signer session are still cleaned up. |
 | Auto-renew defaults | Existing `TestDefaultAutoRenewPolicyDirect`, `TestDefaultAutoRenewRuntimeConfigDirect`, `TestAutoRenewRuntimeConfigFromOptionsDisabled` | Verifies auto-renew is disabled by default. |
 | Auto-renew config validation | Existing `TestValidateAutoRenewPolicyDirect`, `TestValidateAutoRenewRuntimeConfigDirect`, `config_autorenew_test.go` | Verifies invalid amount, fee rate, minconf, interval, expiry window, and budget settings are rejected. |
 | Auto-renew window and max UTXOs | Existing `TestIsInAutoRenewWindowDirect`, `TestSelectAutoRenewCandidatesDirect`, new `TestAutoRenewBuildCandidatesAppliesWindowAmountCapAndOrder` | Verifies candidate window bounds, max UTXOs per run, amount threshold, and deterministic order. |
@@ -39,6 +41,7 @@ go test ./wallet -run 'Test(RenewalSelectedOutpoint|AutoRenewBuildCandidates|Aut
 go test ./rpc/legacyrpc -run 'Test(MakeGetExpiryResult|ParseRenew|GetRenew)' -count=1 -v
 go test ./rpc/rpcserver -run 'Test(BuildExpiryRiskItems|BuildPreviewDecisionReasons|ParseOutPointStringsUnique|WarningsFromExpiryRisks|PolicyVerdict)' -count=1 -v
 go test ./cmd/renewall -run 'Test(SelectOutpoints|RunRenewAllOnce|NewRenewFilter|ParseLoop|RPCConnect)' -count=1 -v
+go test ./cmd/renewall -run 'TestRunRenewAllOnceReports' -count=1 -v
 ```
 
 Broader validation:
@@ -47,6 +50,25 @@ Broader validation:
 go test ./wallet ./rpc/legacyrpc ./rpc/rpcserver ./cmd/renewall -count=1
 go test ./... -count=1
 ```
+
+## Failure-Path Coverage (#17)
+
+Issue #17 asks which renewal failure paths are automated and which need a
+reproduction. This table answers that for the `renewall` CLI. It does not claim
+coverage of the wallet's signing paths.
+
+| Path | Status | Evidence |
+|---|---|---|
+| Agent unreachable (wallet state) | automated | `TestRunRenewAllOnceReportsWalletStateRPCFailure` |
+| Agent unreachable (expiry risk) | automated | `TestRunRenewAllOnceReportsExpiryRiskRPCFailure` |
+| Wallet not synced | automated | `TestRunRenewAllOnceRejectsUnsyncedWalletState` |
+| Insufficient funds | automated at the CLI reporting layer | `TestRunRenewAllOnceReportsInsufficientFunds`; the balance check itself lives on the agent |
+| Locked wallet | partly automated | `TestWalletLockedStateObservableForRenewalGuards` proves the guard state is observable; the funded `obtc.renew` locked refusal stays manual |
+| Wrong network | manual, wallet-side | `renewall` does not compare `WalletState.active_network`, so a mismatch surfaces as the agent's failure on that wallet and needs a testnet or regtest reproduction |
+
+The dry-run success path is the runbook's "View Expiry" and "Dry-Run Batch
+Renewal" sections (`WALLET_RENEWAL_RUNBOOK.md`); the tests above pin the failure
+behaviour around it.
 
 ## Current Findings
 
@@ -74,5 +96,8 @@ The following are intentionally not proven by unit tests in this plan:
   final user-facing error string;
 - non-dry-run `renewall` against a funded controlled wallet;
 - long-running auto-renew scheduler observation across wallet restart;
+- wrong-network mismatch on a live wallet: `renewall` does not compare
+  `WalletState.active_network`, so this path can only be reproduced against a
+  wallet running on the other network;
 - operator log capture proving no sensitive key material is logged during
   renewal failures.
