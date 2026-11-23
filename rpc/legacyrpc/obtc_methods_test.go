@@ -5,10 +5,16 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcd/btcjson"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcwallet/wallet"
 )
+
+func expiryTestPolicy(window uint64, threshold, warning int32) wallet.ResolvedExpiryPolicy {
+	return wallet.ResolvedExpiryPolicy{WindowBlocks: window, ExpiringThresholdBlocks: threshold, RenewWarningBlocks: warning,
+		DustThresholdSat: wallet.CompatibilityDustThresholdSat, ProjectedReclaimRatioBps: wallet.DefaultProjectedReclaimRatioBps}
+}
 
 func testOutPoint(i uint32) wire.OutPoint {
 	return wire.OutPoint{Hash: chainhash.Hash{byte(i)}, Index: i}
@@ -33,9 +39,7 @@ func TestMakeGetExpiryResultDirect(t *testing.T) {
 	}
 	before := int32(200)
 	items, err := makeGetExpiryResult(
-		outputs, 30, 100, 50, wallet.DefaultRenewWarningBlocks,
-		wallet.CompatibilityDustThresholdSat,
-		wallet.DefaultProjectedReclaimRatioBps,
+		outputs, 30, expiryTestPolicy(100, 50, wallet.DefaultRenewWarningBlocks),
 		10, &before,
 	)
 	if err != nil {
@@ -60,9 +64,7 @@ func TestMakeGetExpiryResultLimitAndFilter(t *testing.T) {
 	}
 	before := int32(125) // with window 100, keep heights 10 and 20 only
 	items, err := makeGetExpiryResult(
-		outputs, 0, 100, 10, wallet.DefaultRenewWarningBlocks,
-		wallet.CompatibilityDustThresholdSat,
-		wallet.DefaultProjectedReclaimRatioBps,
+		outputs, 0, expiryTestPolicy(100, 10, wallet.DefaultRenewWarningBlocks),
 		1, &before,
 	)
 	if err != nil {
@@ -92,8 +94,7 @@ func TestMakeGetExpiryResultNearExpiryFields(t *testing.T) {
 	}
 
 	items, err := makeGetExpiryResult(
-		outputs, 188, 100, 25, 12, wallet.CompatibilityDustThresholdSat,
-		wallet.DefaultProjectedReclaimRatioBps,
+		outputs, 188, expiryTestPolicy(100, 25, 12),
 		0, nil,
 	)
 	if err != nil {
@@ -147,9 +148,7 @@ func TestMakeGetExpiryResultLifecycleFieldMatrix(t *testing.T) {
 	}
 
 	items, err := makeGetExpiryResult(
-		outputs, 150, 100, 20, 12,
-		wallet.CompatibilityDustThresholdSat,
-		wallet.DefaultProjectedReclaimRatioBps,
+		outputs, 150, expiryTestPolicy(100, 20, 12),
 		0, nil,
 	)
 	if err != nil {
@@ -342,5 +341,37 @@ func TestGetRenewDirectErrorsIncludeActionableReasons(t *testing.T) {
 	}, &wallet.Wallet{})
 	if err == nil || !strings.Contains(err.Error(), "minconf") {
 		t.Fatalf("expected minconf reason, got %v", err)
+	}
+}
+
+func TestGetExpiryInheritedOutput(t *testing.T) {
+	params := &chaincfg.ObtcMainNetParams
+	policy, _ := wallet.ResolveExpiryPolicy(params)
+	outputs := []*wallet.TransactionOutput{{OutPoint: testOutPoint(1), Output: wire.TxOut{Value: 10000}, ContainingBlock: wallet.BlockIdentity{Height: 600000}}}
+	const activation int32 = 1002016
+	for _, tc := range []struct {
+		tip       int32
+		status    wallet.ExpiryStatus
+		risk      wallet.RenewalRisk
+		renewable bool
+	}{
+		{activation - 2, wallet.ExpiryStatusExpiring, wallet.RenewalRiskNearExpiry, true},
+		{activation - 1, wallet.ExpiryStatusExpiring, wallet.RenewalRiskTooLateNextBlock, false},
+		{activation, wallet.ExpiryStatusExpired, wallet.RenewalRiskExpired, false},
+	} {
+		items, err := makeGetExpiryResult(outputs, tc.tip, policy, 0, nil)
+		if err != nil || len(items) != 1 {
+			t.Fatalf("tip %d: items=%v err=%v", tc.tip, items, err)
+		}
+		item := items[0]
+		if item.NominalExpiryHeight != 962880 || item.ExpiryHeight != activation || item.LatestRenewHeight != activation-1 ||
+			item.Status != string(tc.status) || item.RenewalRisk != string(tc.risk) || item.RenewableInNextBlock != tc.renewable ||
+			item.RenewableInNextBlock == wallet.IsExpiredForSpending(params, 600000, tc.tip) {
+			t.Errorf("tip %d: %+v", tc.tip, item)
+		}
+	}
+	before := activation - 1
+	if items, err := makeGetExpiryResult(outputs, before, policy, 0, &before); err != nil || len(items) != 0 {
+		t.Fatalf("effective expiry filter: %v %v", items, err)
 	}
 }

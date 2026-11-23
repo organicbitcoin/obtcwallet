@@ -398,6 +398,8 @@ func (w *Wallet) buildAutoRenewCandidates(cfg AutoRenewRuntimeConfig) ([]autoRen
 
 	tipHeight := w.Manager.SyncedTo().Height
 	resolvedPolicy, _ := ResolveExpiryPolicy(w.ChainParams())
+	resolvedPolicy.WindowBlocks = cfg.ExpiryWindowBlocks
+	resolvedPolicy.ExpiringThresholdBlocks = cfg.ExpiringThresholdBlocks
 	candidates := make([]autoRenewCandidate, 0, len(outputs))
 	for _, out := range outputs {
 		createHeight := out.ContainingBlock.Height
@@ -406,12 +408,7 @@ func (w *Wallet) buildAutoRenewCandidates(cfg AutoRenewRuntimeConfig) ([]autoRen
 		}
 
 		amountSat := out.Output.Value
-		projectedReclaimSat := resolvedPolicy.ProjectedReclaimSat(amountSat)
-		info, err := BuildExpiryInfo(
-			createHeight, tipHeight, cfg.ExpiryWindowBlocks,
-			cfg.ExpiringThresholdBlocks, amountSat,
-			projectedReclaimSat, resolvedPolicy.DustThresholdSat,
-		)
+		info, err := resolvedPolicy.ExpiryInfo(createHeight, tipHeight, amountSat)
 		if err != nil {
 			log.Warnf("Auto-renew skipped outpoint %s due to invalid expiry info: %v",
 				out.OutPoint, err,

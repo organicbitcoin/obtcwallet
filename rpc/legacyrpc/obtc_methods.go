@@ -28,6 +28,7 @@ type GetExpiryCmd struct {
 }
 
 type GetExpiryResultItem struct {
+	NominalExpiryHeight    int32  `json:"nominal_expiry_height"`
 	OutPoint               string `json:"outpoint"`
 	AmountSat              int64  `json:"amount_sat"`
 	CreateHeight           int32  `json:"create_height"`
@@ -44,6 +45,7 @@ type GetExpiryResultItem struct {
 }
 
 type GetExpiryResult struct {
+	EnableAtHeight     int32                 `json:"expiry_enable_height"`
 	TipHeight          int32                 `json:"tip_height"`
 	WindowBlocks       uint64                `json:"window_blocks"`
 	RenewWarningBlocks int32                 `json:"renew_warning_blocks"`
@@ -72,9 +74,7 @@ func init() {
 	_ = btcjson.RegisterCmd("obtc.renew", (*RenewCmd)(nil), btcjson.UFWalletOnly)
 }
 
-func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, windowBlocks uint64,
-	expiringThreshold, renewWarningBlocks int32, dustThresholdSat int64,
-	projectedReclaimRatioBps uint32, limit int, beforeHeight *int32) (
+func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, policy wallet.ResolvedExpiryPolicy, limit int, beforeHeight *int32) (
 	[]GetExpiryResultItem, error) {
 
 	items := make([]GetExpiryResultItem, 0, len(outputs))
@@ -84,13 +84,7 @@ func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, w
 			continue
 		}
 		amountSat := out.Output.Value
-		reclaimSat := wallet.ProjectedReclaimSat(
-			amountSat, projectedReclaimRatioBps,
-		)
-		info, err := wallet.BuildExpiryInfoWithRenewWarning(
-			createHeight, tipHeight, windowBlocks, expiringThreshold,
-			renewWarningBlocks, amountSat, reclaimSat, dustThresholdSat,
-		)
+		info, err := policy.ExpiryInfo(createHeight, tipHeight, amountSat)
 		if err != nil {
 			return nil, err
 		}
@@ -101,6 +95,7 @@ func makeGetExpiryResult(outputs []*wallet.TransactionOutput, tipHeight int32, w
 			OutPoint:               out.OutPoint.String(),
 			AmountSat:              amountSat,
 			CreateHeight:           info.CreateHeight,
+			NominalExpiryHeight:    info.NominalExpiryHeight,
 			ExpiryHeight:           info.ExpiryHeight,
 			BlocksToExpiry:         info.BlocksToExpiry,
 			DaysToExpiry:           info.DaysToExpiry,
@@ -143,13 +138,11 @@ func getExpiry(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 
 	resolvedPolicy, _ := wallet.ResolveExpiryPolicy(w.ChainParams())
 
-	windowBlocks := resolvedPolicy.WindowBlocks
 	if cmd.WindowBlocks != nil {
-		windowBlocks = *cmd.WindowBlocks
+		resolvedPolicy.WindowBlocks = *cmd.WindowBlocks
 	}
-	expiringThreshold := resolvedPolicy.ExpiringThresholdBlocks
 	if cmd.ExpiringThreshold != nil {
-		expiringThreshold = *cmd.ExpiringThreshold
+		resolvedPolicy.ExpiringThresholdBlocks = *cmd.ExpiringThreshold
 	}
 
 	outputs, err := w.UnspentOutputs(wallet.OutputSelectionPolicy{
@@ -163,16 +156,15 @@ func getExpiry(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 
 	tip := w.Manager.SyncedTo().Height
 	items, err := makeGetExpiryResult(
-		outputs, tip, windowBlocks, expiringThreshold,
-		resolvedPolicy.RenewWarningBlocks, resolvedPolicy.DustThresholdSat,
-		resolvedPolicy.ProjectedReclaimRatioBps, limit, cmd.BeforeHeight,
+		outputs, tip, resolvedPolicy, limit, cmd.BeforeHeight,
 	)
 	if err != nil {
 		return nil, err
 	}
 	return GetExpiryResult{
 		TipHeight:          tip,
-		WindowBlocks:       windowBlocks,
+		WindowBlocks:       resolvedPolicy.WindowBlocks,
+		EnableAtHeight:     resolvedPolicy.EnableAtHeight,
 		RenewWarningBlocks: resolvedPolicy.RenewWarningBlocks,
 		Items:              items,
 	}, nil
@@ -277,12 +269,7 @@ func selectedRenewalWarnings(w *wallet.Wallet, selected []wire.OutPoint,
 		}
 
 		amountSat := output.Output.Value
-		reclaimSat := (amountSat * int64(policy.ProjectedReclaimRatioBps)) / 10000
-		info, err := wallet.BuildExpiryInfoWithRenewWarning(
-			output.ContainingBlock.Height, tip, policy.WindowBlocks,
-			policy.ExpiringThresholdBlocks, policy.RenewWarningBlocks,
-			amountSat, reclaimSat, policy.DustThresholdSat,
-		)
+		info, err := policy.ExpiryInfo(output.ContainingBlock.Height, tip, amountSat)
 		if err != nil {
 			warnings = append(warnings,
 				"unable to inspect selected outpoint expiry risk: "+err.Error())

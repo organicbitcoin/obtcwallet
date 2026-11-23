@@ -28,6 +28,7 @@ const (
 // ResolvedExpiryPolicy contains the resolved expiry parameters used by the
 // wallet for expiry-related computations, UI, and planning.
 type ResolvedExpiryPolicy struct {
+	EnableAtHeight           int32
 	WindowBlocks             uint64
 	ExpiringThresholdBlocks  int32
 	RenewWarningBlocks       int32
@@ -49,6 +50,7 @@ func ResolveExpiryPolicy(params *chaincfg.Params) (ResolvedExpiryPolicy, []strin
 	}
 	if expiryParams != nil {
 		policy.WindowBlocks = expiryParams.WindowBlocks
+		policy.EnableAtHeight = expiryParams.EnableAtHeight
 		policy.DustThresholdSat = expiryParams.ReapDustThresholdSat
 		if ratioBps, ok := projectedReclaimRatioFromTax(expiryParams); ok {
 			policy.ProjectedReclaimRatioBps = ratioBps

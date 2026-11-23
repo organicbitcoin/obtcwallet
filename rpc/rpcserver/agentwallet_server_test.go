@@ -1542,3 +1542,16 @@ func TestOpenSignerSessionAllowsEmptyPassphraseForRemoteBackend(t *testing.T) {
 		t.Fatalf("expected remote signer session to be active: %v", err)
 	}
 }
+
+func TestAgentRiskInheritedOutput(t *testing.T) {
+	policy, _ := wallet.ResolveExpiryPolicy(&chaincfg.ObtcMainNetParams)
+	outputs := []*wallet.TransactionOutput{{ContainingBlock: wallet.BlockIdentity{Height: 600000}, Output: wire.TxOut{Value: 10000}}}
+	const height int32 = 1002016
+	items, err := buildExpiryRiskItems(outputs, height-2, policy, 0, nil)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("items=%v err=%v", items, err)
+	}
+	if items[0].ExpiryHeight != height || items[0].BlocksToExpiry != 2 || items[0].Status != string(wallet.ExpiryStatusExpiring) {
+		t.Fatalf("unexpected risk: %+v", items[0])
+	}
+}
