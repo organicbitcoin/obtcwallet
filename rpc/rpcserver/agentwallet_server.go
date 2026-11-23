@@ -67,14 +67,7 @@ type AgentWalletOptions struct {
 	SignerBackend        AgentSignerBackend
 }
 
-type agentExpiryPolicy struct {
-	WindowBlocks             uint64
-	ExpiringThresholdBlocks  int32
-	RenewWarningBlocks       int32
-	DustThresholdSat         int64
-	ProjectedReclaimRatioBps uint32
-	Source                   string
-}
+type agentExpiryPolicy = wallet.ResolvedExpiryPolicy
 
 type compatibilityExpiryPolicyProvider struct{}
 
@@ -82,14 +75,7 @@ func (compatibilityExpiryPolicyProvider) PolicyForWallet(
 	w *wallet.Wallet) (agentExpiryPolicy, []string, error) {
 
 	resolvedPolicy, warnings := wallet.ResolveExpiryPolicy(w.ChainParams())
-	return agentExpiryPolicy{
-		WindowBlocks:             resolvedPolicy.WindowBlocks,
-		ExpiringThresholdBlocks:  resolvedPolicy.ExpiringThresholdBlocks,
-		RenewWarningBlocks:       resolvedPolicy.RenewWarningBlocks,
-		DustThresholdSat:         resolvedPolicy.DustThresholdSat,
-		ProjectedReclaimRatioBps: resolvedPolicy.ProjectedReclaimRatioBps,
-		Source:                   resolvedPolicy.Source,
-	}, warnings, nil
+	return resolvedPolicy, warnings, nil
 }
 
 type agentWalletServer struct {
@@ -1479,6 +1465,9 @@ func (s *agentWalletServer) resolveExpiryPolicy(
 		return agentExpiryPolicy{}, nil, translateError(err)
 	}
 
+	chainPolicy, _ := wallet.ResolveExpiryPolicy(s.wallet.ChainParams())
+	policy.EnableAtHeight = chainPolicy.EnableAtHeight
+
 	if override != nil {
 		overridden := false
 		if override.WindowBlocks > 0 {
@@ -1519,7 +1508,9 @@ func (s *agentWalletServer) resolveSubmitExpiryPolicy(
 	op *pb.Operation) (agentExpiryPolicy, []string, error) {
 
 	if op != nil && op.EffectivePolicy != nil {
+		chainPolicy, _ := wallet.ResolveExpiryPolicy(s.wallet.ChainParams())
 		policy := agentExpiryPolicy{
+			EnableAtHeight:           chainPolicy.EnableAtHeight,
 			WindowBlocks:             op.EffectivePolicy.WindowBlocks,
 			ExpiringThresholdBlocks:  op.EffectivePolicy.ExpiringThresholdBlocks,
 			RenewWarningBlocks:       wallet.DefaultRenewWarningBlocks,
@@ -1909,14 +1900,7 @@ func buildExpiryRiskItems(outputs []*wallet.TransactionOutput, tipHeight int32,
 		}
 
 		amountSat := output.Output.Value
-		projectedReclaimSat := projectedReclaimAmount(
-			amountSat, policy.ProjectedReclaimRatioBps,
-		)
-		info, err := wallet.BuildExpiryInfoWithRenewWarning(
-			createHeight, tipHeight, policy.WindowBlocks,
-			policy.ExpiringThresholdBlocks, policy.RenewWarningBlocks, amountSat,
-			projectedReclaimSat, policy.DustThresholdSat,
-		)
+		info, err := policy.ExpiryInfo(createHeight, tipHeight, amountSat)
 		if err != nil {
 			return nil, err
 		}
@@ -1980,10 +1964,6 @@ func validateAccountAndMinConfs(account uint32, minConfs int32) error {
 			"min_confirmations must be >= 0")
 	}
 	return nil
-}
-
-func projectedReclaimAmount(amountSat int64, ratioBps uint32) int64 {
-	return (amountSat * int64(ratioBps)) / 10000
 }
 
 func toPBExpiryPolicy(policy agentExpiryPolicy) *pb.ExpiryPolicy {

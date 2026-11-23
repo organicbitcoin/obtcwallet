@@ -34,6 +34,7 @@ type RenewalRiskInfo struct {
 }
 
 type ExpiryInfo struct {
+	NominalExpiryHeight    int32
 	CreateHeight           int32
 	ExpiryHeight           int32
 	BlocksToExpiry         int32
@@ -54,11 +55,11 @@ func CalculateExpiryHeight(createHeight int32, windowBlocks uint64) (int32, erro
 	if createHeight < 0 {
 		return 0, fmt.Errorf("invalid create height: %d", createHeight)
 	}
-	if windowBlocks > uint64(^uint32(0)) {
+	if windowBlocks > math.MaxInt32 {
 		return 0, fmt.Errorf("expiry window too large: %d", windowBlocks)
 	}
 	expiry := int64(createHeight) + int64(windowBlocks)
-	if expiry > int64(^uint32(0)) {
+	if expiry > math.MaxInt32 {
 		return 0, fmt.Errorf("expiry height overflow: %d", expiry)
 	}
 	return int32(expiry), nil
@@ -152,30 +153,48 @@ func BuildExpiryInfo(createHeight, tipHeight int32, windowBlocks uint64,
 func BuildExpiryInfoWithRenewWarning(createHeight, tipHeight int32, windowBlocks uint64,
 	expiringThresholdBlocks, renewWarningBlocks int32, amountSat, projectedReclaimSat, dustThresholdSat int64) (ExpiryInfo, error) {
 
-	expiryHeight, err := CalculateExpiryHeight(createHeight, windowBlocks)
+	policy := ResolvedExpiryPolicy{
+		WindowBlocks:            windowBlocks,
+		ExpiringThresholdBlocks: expiringThresholdBlocks,
+		RenewWarningBlocks:      renewWarningBlocks,
+		DustThresholdSat:        dustThresholdSat,
+	}
+	return policy.buildExpiryInfo(createHeight, tipHeight, amountSat, projectedReclaimSat)
+}
+
+// ExpiryInfo evaluates a confirmed output under the network's activation
+// height and the wallet's configured warning thresholds.
+func (p ResolvedExpiryPolicy) ExpiryInfo(createHeight, tipHeight int32, amountSat int64) (ExpiryInfo, error) {
+	return p.buildExpiryInfo(createHeight, tipHeight, amountSat, p.ProjectedReclaimSat(amountSat))
+}
+
+func (p ResolvedExpiryPolicy) buildExpiryInfo(createHeight, tipHeight int32, amountSat, projectedReclaimSat int64) (ExpiryInfo, error) {
+	nominal, err := CalculateExpiryHeight(createHeight, p.WindowBlocks)
 	if err != nil {
 		return ExpiryInfo{}, err
 	}
 
+	expiryHeight := max(nominal, p.EnableAtHeight)
 	blocksToExpiry := expiryHeight - tipHeight
-	status := ClassifyExpiryStatus(tipHeight, expiryHeight, expiringThresholdBlocks)
+	status := ClassifyExpiryStatus(tipHeight, expiryHeight, p.ExpiringThresholdBlocks)
 	if status == ExpiryStatusExpired {
 		blocksToExpiry = 0
 	}
 
-	if amountSat < 0 || projectedReclaimSat < 0 || dustThresholdSat < 0 {
+	if amountSat < 0 || projectedReclaimSat < 0 || p.DustThresholdSat < 0 {
 		return ExpiryInfo{}, fmt.Errorf("amount and thresholds must be non-negative")
 	}
 
-	renewalRisk := EvaluateRenewalRisk(tipHeight, expiryHeight, renewWarningBlocks)
+	renewalRisk := EvaluateRenewalRisk(tipHeight, expiryHeight, p.RenewWarningBlocks)
 
 	return ExpiryInfo{
 		CreateHeight:           createHeight,
+		NominalExpiryHeight:    nominal,
 		ExpiryHeight:           expiryHeight,
 		BlocksToExpiry:         blocksToExpiry,
 		DaysToExpiry:           EstimateDaysToExpiry(blocksToExpiry),
 		Status:                 status,
-		DustRisk:               projectedReclaimSat < dustThresholdSat,
+		DustRisk:               projectedReclaimSat < p.DustThresholdSat,
 		RenewWarningBlocks:     renewalRisk.RenewWarningBlocks,
 		LatestRenewHeight:      renewalRisk.LatestRenewHeight,
 		BlocksUntilLatestRenew: renewalRisk.BlocksUntilLatestRenew,
@@ -200,13 +219,11 @@ func IsExpiredForSpending(params *chaincfg.Params, createHeight, tipHeight int32
 		return false
 	}
 
-	spendHeight := tipHeight + 1
-	if tipHeight == math.MaxInt32 {
-		spendHeight = tipHeight
-	}
-	if spendHeight < expiryParams.EnableAtHeight {
+	nominal, err := CalculateExpiryHeight(createHeight, expiryParams.WindowBlocks)
+	if err != nil {
+		// The expiry lies beyond the range of representable block heights.
 		return false
 	}
-
-	return spendHeight >= int32(expiryParams.CalculateExpiryKey(createHeight))
+	expiryHeight := max(nominal, expiryParams.EnableAtHeight)
+	return int64(tipHeight)+1 >= int64(expiryHeight)
 }

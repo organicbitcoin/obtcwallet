@@ -89,58 +89,58 @@ func TestEvaluateRenewalRiskBoundaries(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name                   string
-		tip                    int32
-		expiry                 int32
-		warning                int32
-		wantRisk               RenewalRisk
+		name                  string
+		tip                   int32
+		expiry                int32
+		warning               int32
+		wantRisk              RenewalRisk
 		wantRenewableNext     bool
-		wantNearWarning        bool
+		wantNearWarning       bool
 		wantBlocksUntilLatest int32
 	}{
 		{
-			name:                   "outside warning window",
-			tip:                    87,
-			expiry:                 100,
-			warning:                12,
-			wantRisk:               RenewalRiskOK,
-			wantRenewableNext:      true,
+			name:                  "outside warning window",
+			tip:                   87,
+			expiry:                100,
+			warning:               12,
+			wantRisk:              RenewalRiskOK,
+			wantRenewableNext:     true,
 			wantBlocksUntilLatest: 12,
 		},
 		{
-			name:                   "warning boundary included",
-			tip:                    88,
-			expiry:                 100,
-			warning:                12,
-			wantRisk:               RenewalRiskNearExpiry,
-			wantRenewableNext:      true,
-			wantNearWarning:        true,
+			name:                  "warning boundary included",
+			tip:                   88,
+			expiry:                100,
+			warning:               12,
+			wantRisk:              RenewalRiskNearExpiry,
+			wantRenewableNext:     true,
+			wantNearWarning:       true,
 			wantBlocksUntilLatest: 11,
 		},
 		{
-			name:                   "one block before expiry is too late for next block",
-			tip:                    99,
-			expiry:                 100,
-			warning:                12,
-			wantRisk:               RenewalRiskTooLateNextBlock,
-			wantNearWarning:        true,
+			name:                  "one block before expiry is too late for next block",
+			tip:                   99,
+			expiry:                100,
+			warning:               12,
+			wantRisk:              RenewalRiskTooLateNextBlock,
+			wantNearWarning:       true,
 			wantBlocksUntilLatest: 0,
 		},
 		{
-			name:                   "expired at expiry height",
-			tip:                    100,
-			expiry:                 100,
-			warning:                12,
-			wantRisk:               RenewalRiskExpired,
+			name:                  "expired at expiry height",
+			tip:                   100,
+			expiry:                100,
+			warning:               12,
+			wantRisk:              RenewalRiskExpired,
 			wantBlocksUntilLatest: 0,
 		},
 		{
-			name:                   "negative warning clamps to zero",
-			tip:                    98,
-			expiry:                 100,
-			warning:                -1,
-			wantRisk:               RenewalRiskOK,
-			wantRenewableNext:      true,
+			name:                  "negative warning clamps to zero",
+			tip:                   98,
+			expiry:                100,
+			warning:               -1,
+			wantRisk:              RenewalRiskOK,
+			wantRenewableNext:     true,
 			wantBlocksUntilLatest: 1,
 		},
 	}
@@ -211,5 +211,19 @@ func TestIsExpiredForSpendingUsesNextBlockHeight(t *testing.T) {
 	}
 	if IsExpiredForSpending(&chaincfg.TestNet3Params, 98, 241) {
 		t.Fatalf("non-OBTC networks must ignore expiry spendability")
+	}
+}
+
+func TestEffectiveExpiryAfterActivationAndHeightRange(t *testing.T) {
+	p, _ := ResolveExpiryPolicy(&chaincfg.ObtcMainNetParams)
+	info, err := p.ExpiryInfo(700000, 1002016, 10000)
+	if err != nil || info.NominalExpiryHeight != 1062880 || info.ExpiryHeight != info.NominalExpiryHeight || !info.RenewableInNextBlock {
+		t.Fatalf("later nominal expiry: %+v %v", info, err)
+	}
+	if _, err := CalculateExpiryHeight(2147483647, 1); err == nil {
+		t.Fatal("expected unrepresentable expiry height error")
+	}
+	if IsExpiredForSpending(&chaincfg.ObtcMainNetParams, 2147483646, 2147483646) {
+		t.Fatal("an expiry beyond representable heights wrapped")
 	}
 }

@@ -115,12 +115,17 @@ Review these fields for each item:
 | `outpoint` | UTXO selected by txid and vout. |
 | `amount_sat` | Current output value. |
 | `create_height` | Block height where the UTXO was created. |
-| `expiry_height` | Height at which normal spending expires. |
+| `nominal_expiry_height` | Creation height plus the expiry window. |
+| `expiry_height` | First block in which an ordinary signed spend cannot confirm. This is the later of nominal expiry and the network's `expiry_enable_height`. |
+| `latest_renew_height` | Last block in which a signed renewal can confirm, one block before effective expiry. |
+| `renewable_in_next_block` | Whether the next block is still within the signed renewal window. |
 | `blocks_to_expiry` | Remaining blocks at the current wallet tip. |
 | `days_to_expiry` | Approximate days at 144 blocks/day. |
 | `status` | `ok`, `expiring`, or `expired`. |
 | `dust_risk` | Whether projected refund value is below dust threshold. |
 | `renewal_risk` | Wallet-side advisory renewal risk. |
+
+An inherited mainnet output created at height 600,000 has nominal expiry 962,880. It can confirm a signed renewal through 1,002,015. At tip 1,002,015 the next block is too late, and at tip 1,002,016 the output is expired. The `before_height` filter uses effective expiry.
 
 ## Dry-Run Batch Renewal
 
