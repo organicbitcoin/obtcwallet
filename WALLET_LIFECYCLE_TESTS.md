@@ -64,7 +64,7 @@ coverage of the wallet's signing paths.
 | Wallet not synced | automated | `TestRunRenewAllOnceRejectsUnsyncedWalletState` |
 | Insufficient funds | automated at the CLI reporting layer | `TestRunRenewAllOnceReportsInsufficientFunds`; the balance check itself lives on the agent |
 | Locked wallet | partly automated | `TestWalletLockedStateObservableForRenewalGuards` proves the guard state is observable; the funded `obtc.renew` locked refusal stays manual |
-| Wrong network | manual, wallet-side | `renewall` never reads `WalletState.active_network`, so a wallet linked to another network is not detected: the run proceeds against whatever network the agent is on instead of refusing. Observing a refusal therefore needs a testnet or regtest reproduction, or an explicit check added to `renewall` |
+| Wrong network | manual operator check | Before a dry-run, compare the agent’s reported `WalletState.active_network` with the intended testnet or regtest. A synced agent on another network can return a successful dry-run for that network. |
 
 The dry-run success path is the runbook's "View Expiry" and "Dry-Run Batch
 Renewal" sections (`WALLET_RENEWAL_RUNBOOK.md`); the tests above pin the failure
